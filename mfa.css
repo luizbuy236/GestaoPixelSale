@@ -1,0 +1,19 @@
+.totp-setup {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.totp-setup img {
+  width: 210px;
+  height: 210px;
+  padding: 8px;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.totp-setup details { text-align: center; color: var(--muted); }
+.totp-setup code { display: block; margin-top: 8px; color: var(--text); overflow-wrap: anywhere; }
+.totp-code { text-align: center; font-size: 22px; letter-spacing: 8px; }
+.login-screen ~ .modal-backdrop { z-index: 130; }

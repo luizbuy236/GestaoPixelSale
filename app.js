@@ -8,6 +8,7 @@ const supabaseClient=window.supabase.createClient(
   'https://pglafsnqlrkgcvnakyyi.supabase.co',
   'sb_publishable_sfyRmHH7ScK1Kt4sOw5lOQ_HwkjrRUR'
 );
+const ADMIN_EMAIL='lluiz7628rd@gmail.com';
 const seed={
  sales:[],
  expenses:[],
@@ -16,9 +17,11 @@ const seed={
  commissions:[],
  categories:[{id:'cat1',name:'Blox Fruits',icon:'⚔',fields:['Level','Frutas ingeridas','Frutas no inventário','Espadas','Guns','Fighting Styles','Acessórios','Raça','V4','Fragmentos','Beli','Gamepasses','Títulos','Sea liberado']},{id:'cat2',name:'Grow a Garden',icon:'🌱',fields:['Pets','Sementes','Dinheiro','Eventos','Itens raros','Gamepasses']},{id:'cat3',name:'Grow a Garden 2',icon:'🌿',fields:['Pets','Sementes','Dinheiro','Eventos','Itens raros','Gamepasses']},{id:'cat4',name:'Plants Vs Brainrots',icon:'🌻',fields:['Personagens','Itens','Gamepasses']},{id:'cat5',name:'Steal a Brainrots',icon:'🧠',fields:['Brainrots','Dinheiro','Itens raros']},{id:'cat6',name:'99 Noites na Floresta',icon:'🌲',fields:['Itens','Recursos','Nível','Equipamentos','Gamepasses']}],
  accounts:[{id:'a1',name:'Dragon V4 Full',login:'player_x',password:'••••••••',email:'conta@email.com',emailPassword:'••••••••',category:'Blox Fruits',buy:120,sell:349.9,status:'Disponível',attrs:{Level:'2550',Raça:'Ghoul',V4:'Sim'}},{id:'a2',name:'Garden Pets Pack',login:'garden_44',password:'••••••••',email:'garden@email.com',emailPassword:'••••••••',category:'Grow a Garden',buy:70,sell:189.9,status:'Reservada',attrs:{Pets:'Dragonfly, Raccoon'}},{id:'a3',name:'Brainrot Rare',login:'rare_br',password:'••••••••',email:'rare@email.com',emailPassword:'••••••••',category:'Steal a Brainrots',buy:95,sell:279.9,status:'Vendida',attrs:{Brainrots:'Tralalero, Bombardiro'}}],
- users:[{id:'u1',name:'Administrador',email:'admin@pixelsale.com',role:'Administrador',status:'Ativo'}]
+ users:[{id:'u1',name:'Administrador',email:ADMIN_EMAIL,role:'Administrador',status:'Ativo'}]
 };
 let db=JSON.parse(localStorage.getItem('pixelsale-db')||'null')||seed;
+const savedAdmin=db.users?.find(user=>user.role==='Administrador');
+if(savedAdmin)savedAdmin.email=ADMIN_EMAIL;
 const dataResetVersion='2026-08-02-sales-expenses';
 if(localStorage.getItem('pixelsale-data-reset')!==dataResetVersion){
   db.sales=[];
@@ -38,6 +41,8 @@ async function loadDatabase(){
   if(error)throw error;
   if(data?.data){
     db={...seed,...data.data};
+    const admin=db.users?.find(account=>account.role==='Administrador');
+    if(admin)admin.email=ADMIN_EMAIL;
     localStorage.setItem('pixelsale-db',JSON.stringify(db));
     return;
   }
@@ -265,13 +270,50 @@ $('#modalClose').onclick=closeModal;$('#modal').onclick=e=>{if(e.target===$('#mo
 $('#modal').onclick=null;
 function showApp(){ $('#loginScreen').classList.add('is-hidden');$('#appShell').classList.remove('is-locked');render() }
 function showLogin(){ $('#loginScreen').classList.remove('is-hidden');$('#appShell').classList.add('is-locked') }
-$('#loginForm').onsubmit=async e=>{e.preventDefault();let form=Object.fromEntries(new FormData(e.target)),button=$('#loginForm .login-submit');button.disabled=true;const {error}=await supabaseClient.auth.signInWithPassword({email:form.email,password:form.password});if(error){$('#loginError').textContent='Email ou senha inválidos.';$('#loginError').classList.add('show')}else{$('#loginError').classList.remove('show');try{await loadDatabase();showApp()}catch(loadError){console.error(loadError);showToast('Não foi possível carregar os dados.')}}button.disabled=false};
+async function verifiedTotpFactor(){
+  const {data,error}=await supabaseClient.auth.mfa.listFactors();
+  if(error)throw error;
+  return data.totp.find(factor=>factor.status==='verified');
+}
+async function verifyTotp(factor){
+  return new Promise(resolve=>{
+    $('#modalBody').innerHTML=`<h2>Confirme seu acesso</h2><div class="modal-sub">Digite o código de 6 dígitos exibido no Google Authenticator.</div><form id="totpVerifyForm"><label class="login-field"><span>Código de verificação</span><input name="code" class="totp-code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required autofocus></label><div class="login-error" id="totpError"></div><div class="form-actions"><button class="primary">Verificar código</button></div></form>`;
+    $('#modal').classList.add('open');
+    $('#totpVerifyForm').onsubmit=async event=>{
+      event.preventDefault();const button=$('#totpVerifyForm button');button.disabled=true;
+      const code=new FormData(event.target).get('code');
+      const {error}=await supabaseClient.auth.mfa.challengeAndVerify({factorId:factor.id,code});
+      if(error){$('#totpError').textContent='Código inválido ou expirado.';$('#totpError').classList.add('show');button.disabled=false;return}
+      closeModal();resolve();
+    };
+  });
+}
+async function configureTotp(){
+  try{
+    const current=await verifiedTotpFactor();
+    if(current)return showToast('A verificação em dois fatores já está ativa.');
+    const {data,error}=await supabaseClient.auth.mfa.enroll({factorType:'totp',friendlyName:'PixelSale - Administrador'});
+    if(error)throw error;
+    $('#modalBody').innerHTML=`<h2>Ativar Google Authenticator</h2><div class="modal-sub">Escaneie o QR Code no aplicativo e informe o código gerado.</div><div class="totp-setup"><img src="${data.totp.qr_code}" alt="QR Code para configurar o Google Authenticator"><details><summary>Usar chave manual</summary><code>${escapeHtml(data.totp.secret)}</code></details></div><form id="totpEnrollForm"><label class="login-field"><span>Código de 6 dígitos</span><input name="code" class="totp-code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required autofocus></label><div class="login-error" id="totpEnrollError"></div><div class="form-actions"><button type="button" class="secondary" onclick="closeModal()">Cancelar</button><button class="primary">Ativar proteção</button></div></form>`;
+    $('#modal').classList.add('open');
+    $('#totpEnrollForm').onsubmit=async event=>{
+      event.preventDefault();const button=$('#totpEnrollForm .primary');button.disabled=true;
+      const code=new FormData(event.target).get('code');
+      const {error:verifyError}=await supabaseClient.auth.mfa.challengeAndVerify({factorId:data.id,code});
+      if(verifyError){$('#totpEnrollError').textContent='Código inválido ou expirado.';$('#totpEnrollError').classList.add('show');button.disabled=false;return}
+      closeModal();showToast('Verificação em dois fatores ativada.');
+    };
+  }catch(error){console.error(error);showToast('Não foi possível configurar o autenticador.');}
+}
+async function finishLogin(){const factor=await verifiedTotpFactor();if(factor)await verifyTotp(factor);await loadDatabase();showApp()}
+$('#loginForm').onsubmit=async e=>{e.preventDefault();let form=Object.fromEntries(new FormData(e.target)),button=$('#loginForm .login-submit');button.disabled=true;const {error}=await supabaseClient.auth.signInWithPassword({email:form.email,password:form.password});if(error){$('#loginError').textContent='Email ou senha inválidos.';$('#loginError').classList.add('show')}else{$('#loginError').classList.remove('show');try{await finishLogin()}catch(loadError){console.error(loadError);showToast('Não foi possível concluir o acesso.')}}button.disabled=false};
 $('#togglePassword').onclick=()=>{let input=$('#loginForm [name=password]');input.type=input.type==='password'?'text':'password'};
 $('#forgotPassword').onclick=async()=>{let email=$('#loginForm [name=email]').value;if(!email)return showToast('Informe seu email.');const {error}=await supabaseClient.auth.resetPasswordForEmail(email,{redirectTo:location.origin});showToast(error?'Não foi possível enviar a recuperação.':'Confira seu email para redefinir a senha.')};
 $('#logoutBtn').onclick=async()=>{await supabaseClient.auth.signOut();showLogin()};
+$('#mfaBtn').onclick=configureTotp;
 async function initializeApp(){
   const {data:{session}}=await supabaseClient.auth.getSession();
   if(!session)return showLogin();
-  try{await loadDatabase();showApp()}catch(error){console.error('Falha ao carregar dados do Supabase:',error);showToast('Não foi possível carregar os dados do Supabase.');showLogin()}
+  try{const {data}=await supabaseClient.auth.mfa.getAuthenticatorAssuranceLevel();if(data.nextLevel==='aal2'&&data.currentLevel!=='aal2')return showLogin();await loadDatabase();showApp()}catch(error){console.error('Falha ao carregar dados do Supabase:',error);showToast('Não foi possível carregar os dados do Supabase.');showLogin()}
 }
 initializeApp();
