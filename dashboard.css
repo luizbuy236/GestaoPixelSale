@@ -64,3 +64,27 @@
   filter: invert(1);
   opacity: .7;
 }
+
+.row-actions {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.edit-action {
+  background: #8257ff1c;
+  border: 1px solid #8257ff45;
+  border-radius: 6px;
+  color: #bca9ff;
+  font-size: 11px;
+  padding: 5px 9px;
+}
+
+.edit-action:hover {
+  background: #8257ff35;
+  color: #fff;
+}
+
+.delete-action {
+  color: var(--red);
+}
