@@ -88,3 +88,10 @@
 .delete-action {
   color: var(--red);
 }
+
+.sale-contact {
+  color: #aaa0cc;
+  display: inline-block;
+  font-size: 10px;
+  margin-top: 3px;
+}
