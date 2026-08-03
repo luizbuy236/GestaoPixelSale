@@ -38,13 +38,17 @@ function dashboard(){
   const monthData=key=>{
     const sales=db.sales.filter(s=>monthKey(s.date)===key);
     const completed=sales.filter(s=>s.status==='Concluída');
-    const productCosts=sum(completed,'cost');
-    const salePartnerships=sum(completed,'partnership');
+    const financial=db.expenses.filter(e=>monthKey(e.date)===key);
+    const productCosts=sum(financial.filter(e=>['Compra de contas','Compra de itens','Produtos'].includes(e.category)));
+    const trafficExpenses=sum(financial.filter(e=>e.category==='Tráfego pago'));
+    const partnershipExpenses=sum(financial.filter(e=>e.category==='Parcerias'));
+    const commissionExpenses=sum(financial.filter(e=>e.category==='Comissões'));
+    const classified=new Set(['Compra de contas','Compra de itens','Produtos','Tráfego pago','Parcerias','Comissões']);
     const partnerAgreements=sum(db.partners.filter(p=>monthKey(p.due)===key&&p.status!=='Inativo'));
-    const partnerships=salePartnerships+partnerAgreements;
-    const commissions=sum(db.commissions.filter(c=>monthKey(c.date)===key&&c.status==='Pago'));
-    const traffic=sum(db.campaigns.filter(c=>monthKey(c.start)===key));
-    const other=sum(db.expenses.filter(e=>monthKey(e.date)===key));
+    const partnerships=partnerAgreements+partnershipExpenses;
+    const commissions=sum(db.commissions.filter(c=>monthKey(c.date)===key&&c.status==='Pago'))+commissionExpenses;
+    const traffic=sum(db.campaigns.filter(c=>monthKey(c.start)===key))+trafficExpenses;
+    const other=sum(financial.filter(e=>!classified.has(e.category)));
     const revenue=sum(completed), expenses=productCosts+partnerships+commissions+traffic+other;
     return {sales,completed,revenue,productCosts,partnerships,commissions,traffic,other,expenses,net:revenue-expenses};
   };
@@ -59,7 +63,7 @@ function dashboard(){
   const months=Array.from({length:12},(_,index)=>{const d=new Date(now.getFullYear(),now.getMonth()-11+index,1);return {label:d.toLocaleDateString('pt-BR',{month:'short'}).replace('.',''),...monthData(keyFor(d))}});
   const chartMax=Math.max(0,...months.flatMap(m=>[m.revenue,m.expenses]));
   const chart=chartMax?months.map(m=>`<div class="bar-group" title="${m.label}: receita ${money(m.revenue)} · despesas ${money(m.expenses)}"><i class="bar ${m.revenue?'':'is-zero'}" style="height:${m.revenue/chartMax*100}%"></i><i class="bar alt ${m.expenses?'':'is-zero'}" style="height:${m.expenses/chartMax*100}%"></i><label>${m.label}</label></div>`).join(''):`<div class="chart-empty"><b>Sem dados financeiros</b><span>Cadastre vendas ou despesas para visualizar a evolução.</span></div>`;
-  const spending=[['Produtos',current.productCosts,'var(--purple)'],['Tráfego',current.traffic,'var(--blue)'],['Parcerias',current.partnerships,'var(--yellow)'],['Outros',current.other+current.commissions,'var(--red)']];
+  const spending=[['Produtos',current.productCosts,'var(--purple)'],['Tráfego',current.traffic,'var(--blue)'],['Parcerias',current.partnerships,'var(--yellow)'],['Comissões',current.commissions,'var(--green)'],['Outros',current.other,'var(--red)']];
   let accumulated=0;
   const gradient=spending.map(([,value,color])=>{const start=accumulated;accumulated+=current.expenses?value/current.expenses*100:0;return `${color} ${start}% ${accumulated}%`}).join(',');
   const distribution=current.expenses?`<div class="donut" style="background:conic-gradient(${gradient})"></div><div class="legend">${spending.map(([label,value,color])=>`<div style="--c:${color}">${label} · ${(value/current.expenses*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}%<span>${money(value)}</span></div>`).join('')}</div>`:`<div class="donut donut-empty"></div><div class="chart-empty compact"><b>Sem gastos no mês</b><span>A distribuição aparecerá após um lançamento.</span></div>`;
@@ -98,7 +102,7 @@ function render(){renderNav();$('#content').innerHTML=renderers[page]();if(page=
 const forms={
  sale:['Nova venda','Registre a venda e calcule o lucro automaticamente',[['client','Cliente','text'],['contact','Contato','text'],['product','Produto','text'],['category','Categoria','category'],['value','Valor da venda','number'],['cost','Custo do produto','number'],['commission','Comissão','number'],['partnership','Parceria','number'],['payment','Forma de pagamento','select:PIX,Cartão,Boleto,Dinheiro'],['platform','Plataforma','text'],['date','Data','date'],['status','Status','select:Concluída,Pendente,Cancelada']],'sales'],
  account:['Nova conta Roblox','Credenciais e dados do estoque',[['name','Nome da conta','text'],['login','Login','text'],['password','Senha','text'],['email','Email','email'],['emailPassword','Senha do email','text'],['category','Categoria','category'],['buy','Valor de compra','number'],['sell','Valor de venda','number'],['status','Status','select:Disponível,Reservada,Vendida']],'accounts'],
- expense:['Nova despesa','Registre uma saída financeira',[['description','Descrição','text'],['category','Categoria','select:Compra de contas,Compra de itens,Produtos,Serviços,Hospedagem,Domínio,Ferramentas,Outros'],['value','Valor','number'],['date','Data','date'],['payment','Forma de pagamento','select:PIX,Cartão,Boleto,Dinheiro'],['notes','Observação','textarea']],'expenses'],
+ expense:['Nova despesa','Registre uma saída financeira',[['description','Descrição','text'],['category','Categoria','select:Compra de contas,Compra de itens,Produtos,Tráfego pago,Parcerias,Comissões,Serviços,Hospedagem,Domínio,Ferramentas,Outros'],['value','Valor','number'],['date','Data','date'],['payment','Forma de pagamento','select:PIX,Cartão,Boleto,Dinheiro'],['notes','Observação','textarea']],'expenses'],
  campaign:['Nova campanha','Acompanhe o investimento em anúncios',[['platform','Plataforma','select:Google Ads,Meta Ads,TikTok Ads'],['name','Nome da campanha','text'],['start','Data inicial','date'],['end','Data final','date'],['value','Valor investido','number'],['notes','Observações','textarea']],'campaigns'],
  partner:['Novo parceiro','Cadastre acordos e vencimentos',[['name','Nome','text'],['contact','Contato','text'],['type','Tipo da parceria','text'],['value','Valor acordado','number'],['frequency','Frequência','select:Semanal,Quinzenal,Mensal,Personalizada'],['due','Próximo vencimento','date'],['status','Status','select:Ativo,Pendente,Inativo']],'partners'],
  commission:['Nova comissão','Relacione o pagamento ao colaborador',[['name','Colaborador / Afiliado','text'],['sale','Venda relacionada','sale'],['value','Valor','number'],['date','Data','date'],['status','Status','select:Pago,Pendente'],['notes','Observação','textarea']],'commissions'],
