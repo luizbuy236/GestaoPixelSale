@@ -35,7 +35,10 @@ function dashboard(){
   const monthData=key=>{
     const sales=db.sales.filter(s=>monthKey(s.date)===key);
     const completed=sales.filter(s=>s.status==='Concluída');
-    const productCosts=sum(completed,'cost'), partnerships=sum(completed,'partnership');
+    const productCosts=sum(completed,'cost');
+    const salePartnerships=sum(completed,'partnership');
+    const partnerAgreements=sum(db.partners.filter(p=>monthKey(p.due)===key&&p.status!=='Inativo'));
+    const partnerships=salePartnerships+partnerAgreements;
     const commissions=sum(db.commissions.filter(c=>monthKey(c.date)===key&&c.status==='Pago'));
     const traffic=sum(db.campaigns.filter(c=>monthKey(c.start)===key));
     const other=sum(db.expenses.filter(e=>monthKey(e.date)===key));
