@@ -3,8 +3,8 @@ const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'B
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const today=new Date().toISOString().slice(0,10);
 const seed={
- sales:[{id:'s1',client:'Carlos Mendes',product:'Conta Level Max',category:'Blox Fruits',value:349.9,cost:120,commission:20,partnership:0,payment:'PIX',platform:'WhatsApp',date:today,status:'Concluída'},{id:'s2',client:'Ana Souza',product:'Kit Pets Raros',category:'Grow a Garden',value:189.9,cost:70,commission:0,partnership:15,payment:'Cartão',platform:'Discord',date:today,status:'Concluída'},{id:'s3',client:'Lucas Lima',product:'Conta Premium',category:'Steal a Brainrots',value:279.9,cost:95,commission:15,partnership:0,payment:'PIX',platform:'Site',date:today,status:'Pendente'}],
- expenses:[{id:'e1',description:'Google Ads — Conversões',category:'Tráfego pago',value:320,date:today,payment:'Cartão'},{id:'e2',description:'Compra de conta Blox Fruits',category:'Produtos',value:120,date:today,payment:'PIX'}],
+ sales:[],
+ expenses:[],
  campaigns:[{id:'c1',platform:'Meta Ads',name:'Remarketing Agosto',start:today,end:today,value:540,notes:'Conversões WhatsApp'}],
  partners:[{id:'p1',name:'Canal Rbx News',contact:'@rbxnews',type:'Divulgação',value:300,frequency:'Mensal',due:today,status:'Pendente',paid:900}],
  commissions:[{id:'m1',name:'João',sale:'s1',value:20,date:today,status:'Pago',notes:''},{id:'m2',name:'Marina',sale:'s3',value:15,date:today,status:'Pendente',notes:''}],
@@ -12,7 +12,15 @@ const seed={
  accounts:[{id:'a1',name:'Dragon V4 Full',login:'player_x',password:'••••••••',email:'conta@email.com',emailPassword:'••••••••',category:'Blox Fruits',buy:120,sell:349.9,status:'Disponível',attrs:{Level:'2550',Raça:'Ghoul',V4:'Sim'}},{id:'a2',name:'Garden Pets Pack',login:'garden_44',password:'••••••••',email:'garden@email.com',emailPassword:'••••••••',category:'Grow a Garden',buy:70,sell:189.9,status:'Reservada',attrs:{Pets:'Dragonfly, Raccoon'}},{id:'a3',name:'Brainrot Rare',login:'rare_br',password:'••••••••',email:'rare@email.com',emailPassword:'••••••••',category:'Steal a Brainrots',buy:95,sell:279.9,status:'Vendida',attrs:{Brainrots:'Tralalero, Bombardiro'}}],
  users:[{id:'u1',name:'Administrador',email:'admin@pixelsale.com',role:'Administrador',status:'Ativo'}]
 };
-let db=JSON.parse(localStorage.getItem('pixelsale-db')||'null')||seed; let page='dashboard';
+let db=JSON.parse(localStorage.getItem('pixelsale-db')||'null')||seed;
+const dataResetVersion='2026-08-02-sales-expenses';
+if(localStorage.getItem('pixelsale-data-reset')!==dataResetVersion){
+  db.sales=[];
+  db.expenses=[];
+  localStorage.setItem('pixelsale-db',JSON.stringify(db));
+  localStorage.setItem('pixelsale-data-reset',dataResetVersion);
+}
+let page='dashboard';
 const save=()=>localStorage.setItem('pixelsale-db',JSON.stringify(db));
 const nav=[['Visão geral','dashboard','▦','Dashboard'],['Operação','sales','↗','Vendas'],['Operação','inventory','◇','Contas Roblox'],['Financeiro','finance','◉','Financeiro'],['Financeiro','traffic','⌁','Tráfego pago'],['Relacionamentos','partners','♧','Parcerias'],['Relacionamentos','commissions','♙','Comissões'],['Gestão','reports','▥','Relatórios'],['Gestão','admin','⚙','Administração']];
 function renderNav(){let last='';$('#nav').innerHTML=nav.map(n=>{let s=n[0]!==last?`<div class="nav-section">${last=n[0]}</div>`:'';return s+`<button class="nav-btn ${page===n[1]?'active':''}" data-page="${n[1]}"><span class="nav-icon">${n[2]}</span>${n[3]}</button>`}).join('');$$('.nav-btn').forEach(b=>b.onclick=()=>{page=b.dataset.page;render();$('#sidebar').classList.remove('open')})}
