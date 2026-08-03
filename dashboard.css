@@ -111,3 +111,49 @@
   background: #25d36632;
   color: #9cf4bc;
 }
+
+.period-controls {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.period-controls label {
+  color: var(--muted);
+  display: grid;
+  font-size: 10px;
+  gap: 4px;
+  text-align: left;
+}
+
+.period-controls input {
+  background: #0b0b0f;
+  border: 1px solid #26262e;
+  border-radius: 7px;
+  color: var(--text);
+  color-scheme: dark;
+  padding: 8px;
+}
+
+.export-info {
+  background: #8257ff12;
+  border: 1px solid #8257ff30;
+  border-radius: 9px;
+  display: grid;
+  gap: 4px;
+  margin-top: 18px;
+  padding: 13px;
+}
+
+.export-info span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+@media (max-width: 900px) {
+  .period-controls {
+    justify-content: flex-start;
+  }
+}

@@ -2,6 +2,7 @@ const $=(s,e=document)=>e.querySelector(s), $$=(s,e=document)=>[...e.querySelect
 const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}), date=v=>new Date(v+'T12:00:00').toLocaleDateString('pt-BR');
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const today=new Date().toISOString().slice(0,10);
+let dashboardPeriod={start:`${today.slice(0,7)}-01`,end:today};
 const seed={
  sales:[],
  expenses:[],
@@ -30,7 +31,7 @@ const whatsappNumber=contact=>{let digits=String(contact||'').replace(/\D/g,'').
 const whatsappButton=(contact,name)=>{let number=whatsappNumber(contact);return number?`<a class="action whatsapp-action" href="https://wa.me/${number}?text=${encodeURIComponent(`Olá, ${name}!`)}" target="_blank" rel="noopener noreferrer" title="Conversar pelo WhatsApp">WhatsApp</a>`:''};
 const rowActions=(formType,collection,id,contact='',name='')=>`<div class="row-actions">${whatsappButton(contact,name)}<button class="action edit-action" onclick="openForm('${formType}','${id}')">Alterar</button><button class="action delete-action" onclick="removeItem('${collection}','${id}')" title="Excluir">×</button></div>`;
 const profit=s=>+s.value-+s.cost-+(s.commission||0)-+(s.partnership||0);
-function dashboard(){
+function dashboardLegacy(){
   const monthKey=d=>String(d||'').slice(0,7), now=new Date();
   const keyFor=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
   const currentKey=keyFor(now), previousKey=keyFor(new Date(now.getFullYear(),now.getMonth()-1,1));
@@ -70,6 +71,60 @@ function dashboard(){
   const distribution=current.expenses?`<div class="donut" style="background:conic-gradient(${gradient})"></div><div class="legend">${spending.map(([label,value,color])=>`<div style="--c:${color}">${label} · ${(value/current.expenses*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}%<span>${money(value)}</span></div>`).join('')}</div>`:`<div class="donut donut-empty"></div><div class="chart-empty compact"><b>Sem gastos no mês</b><span>A distribuição aparecerá após um lançamento.</span></div>`;
   return head('Dashboard','Visão geral do desempenho da PixelSale',`<button class="secondary" onclick="exportCSV('sales')">⇩ Exportar</button><button class="primary" onclick="openForm('sale')">＋ Nova venda</button>`)+`<div class="kpi-grid">${kpi('Faturamento bruto',money(current.revenue),'↗','var(--purple)',trend(current.revenue,previous.revenue))}${kpi('Lucro líquido',money(current.net),'◇','var(--green)',trend(current.net,previous.net))}${kpi('Despesas totais',money(current.expenses),'▤','var(--red)','Despesas financeiras do mês')}${kpi('Lucro bruto',money(current.grossProfit),'◉','var(--blue)','Vendas menos custo dos produtos')}${kpi('Total de vendas',current.sales.length,'▣','var(--blue)','Vendas registradas no mês')}${kpi('Ticket médio',money(current.completed.length?current.revenue/current.completed.length:0),'◉','var(--yellow)','Média das vendas concluídas')}${kpi('Comissões pagas',money(current.commissions),'✓','var(--green)','Valores pagos no mês')}${kpi('Comissões pendentes',money(pending),'!','var(--yellow)','Pendentes no mês')}</div><div class="grid-2"><div class="panel"><div class="panel-head"><h3>Evolução financeira</h3><span class="muted">Lucro bruto × despesas · 12 meses</span></div><div class="chart">${chart}</div></div><div class="panel"><div class="panel-head"><h3>Distribuição de gastos</h3><span class="muted">Mês atual</span></div><div class="donut-wrap">${distribution}</div></div></div>${salesTable(db.sales.slice(0,5),'Vendas recentes')}`;
 }
+const inPeriod=(value,start,end)=>Boolean(value&&value>=start&&value<=end);
+const sumRows=(rows,field='value')=>rows.reduce((total,row)=>total+Number(row[field]||0),0);
+function financialRange(start,end){
+  const sales=db.sales.filter(s=>inPeriod(s.date,start,end));
+  const completed=sales.filter(s=>s.status==='Concluída');
+  const financial=db.expenses.filter(e=>inPeriod(e.date,start,end));
+  const productCategories=['Compra de contas','Compra de itens','Produtos'];
+  const classified=new Set([...productCategories,'Tráfego pago','Parcerias','Comissões']);
+  const productCosts=sumRows(financial.filter(e=>productCategories.includes(e.category)));
+  const traffic=sumRows(db.campaigns.filter(c=>inPeriod(c.start,start,end)))+sumRows(financial.filter(e=>e.category==='Tráfego pago'));
+  const partnerships=sumRows(db.partners.filter(p=>inPeriod(p.due,start,end)&&p.status!=='Inativo'))+sumRows(financial.filter(e=>e.category==='Parcerias'));
+  const commissions=sumRows(db.commissions.filter(c=>inPeriod(c.date,start,end)&&c.status==='Pago'))+sumRows(financial.filter(e=>e.category==='Comissões'));
+  const other=sumRows(financial.filter(e=>!classified.has(e.category)));
+  const revenue=sumRows(completed),saleCosts=sumRows(completed,'cost'),grossProfit=revenue-saleCosts,expenses=productCosts+traffic+partnerships+commissions+other;
+  return {sales,completed,revenue,saleCosts,grossProfit,productCosts,traffic,partnerships,commissions,other,expenses,net:grossProfit-expenses};
+}
+const isoDate=date=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+function shiftPeriod(start,end){
+  const startDate=new Date(`${start}T12:00:00`),endDate=new Date(`${end}T12:00:00`),days=Math.round((endDate-startDate)/86400000)+1;
+  const previousEnd=new Date(startDate);previousEnd.setDate(previousEnd.getDate()-1);
+  const previousStart=new Date(previousEnd);previousStart.setDate(previousStart.getDate()-days+1);
+  return {start:isoDate(previousStart),end:isoDate(previousEnd)};
+}
+function dashboardMonths(start,end){
+  const months=[],cursor=new Date(`${start.slice(0,7)}-01T12:00:00`),last=end.slice(0,7);
+  while(months.length<36){
+    const key=`${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,'0')}`;
+    const monthStart=key===start.slice(0,7)?start:`${key}-01`;
+    const lastDay=new Date(cursor.getFullYear(),cursor.getMonth()+1,0).getDate();
+    const monthEnd=key===last?end:`${key}-${lastDay}`;
+    months.push({label:cursor.toLocaleDateString('pt-BR',{month:'short',year:'2-digit'}).replace('.',''),...financialRange(monthStart,monthEnd)});
+    if(key===last)break;
+    cursor.setMonth(cursor.getMonth()+1);
+  }
+  return months;
+}
+function applyDashboardPeriod(){
+  const start=$('#dashboardStart').value,end=$('#dashboardEnd').value;
+  if(!start||!end||start>end)return showToast('Informe um período válido.');
+  dashboardPeriod={start,end};render();
+}
+function dashboard(){
+  const {start,end}=dashboardPeriod,previousPeriod=shiftPeriod(start,end),current=financialRange(start,end),previous=financialRange(previousPeriod.start,previousPeriod.end);
+  const trend=(value,before)=>!value&&!before?'Sem movimentação':!before?'Sem histórico anterior':`${value>=before?'↑':'↓'} ${Math.abs((value-before)/Math.abs(before)*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}% vs. período anterior`;
+  const pending=sumRows(db.commissions.filter(c=>inPeriod(c.date,start,end)&&c.status==='Pendente'));
+  const months=dashboardMonths(start,end),chartMax=Math.max(0,...months.flatMap(m=>[Math.max(0,m.grossProfit),m.expenses]));
+  const chart=chartMax?months.map(m=>`<div class="bar-group" title="${m.label}: lucro bruto ${money(m.grossProfit)} · despesas ${money(m.expenses)} · líquido ${money(m.net)}"><i class="bar ${m.grossProfit>0?'':'is-zero'}" style="height:${Math.max(0,m.grossProfit)/chartMax*100}%"></i><i class="bar alt ${m.expenses?'':'is-zero'}" style="height:${m.expenses/chartMax*100}%"></i><label>${m.label}</label></div>`).join(''):`<div class="chart-empty"><b>Sem dados financeiros</b><span>Não há movimentações no período selecionado.</span></div>`;
+  const spending=[['Produtos',current.productCosts,'var(--purple)'],['Tráfego',current.traffic,'var(--blue)'],['Parcerias',current.partnerships,'var(--yellow)'],['Comissões',current.commissions,'var(--green)'],['Outros',current.other,'var(--red)']];
+  let accumulated=0;
+  const gradient=spending.map(([,value,color])=>{const from=accumulated;accumulated+=current.expenses?value/current.expenses*100:0;return `${color} ${from}% ${accumulated}%`}).join(',');
+  const distribution=current.expenses?`<div class="donut" style="background:conic-gradient(${gradient})"></div><div class="legend">${spending.map(([label,value,color])=>`<div style="--c:${color}">${label} · ${(value/current.expenses*100).toLocaleString('pt-BR',{maximumFractionDigits:1})}%<span>${money(value)}</span></div>`).join('')}</div>`:`<div class="donut donut-empty"></div><div class="chart-empty compact"><b>Sem gastos no período</b><span>A distribuição aparecerá após um lançamento.</span></div>`;
+  const actions=`<div class="period-controls"><label>De <input type="date" id="dashboardStart" value="${start}"></label><label>Até <input type="date" id="dashboardEnd" value="${end}"></label><button class="secondary" onclick="applyDashboardPeriod()">Aplicar</button><button class="secondary" onclick="openExportModal()">⇩ Excel</button><button class="primary" onclick="openForm('sale')">＋ Nova venda</button></div>`;
+  return head('Dashboard',`Resultados de ${date(start)} até ${date(end)}`,actions)+`<div class="kpi-grid">${kpi('Faturamento bruto',money(current.revenue),'↗','var(--purple)',trend(current.revenue,previous.revenue))}${kpi('Lucro líquido',money(current.net),'◇','var(--green)',trend(current.net,previous.net))}${kpi('Despesas totais',money(current.expenses),'▤','var(--red)','Despesas do período')}${kpi('Lucro bruto',money(current.grossProfit),'◉','var(--blue)','Vendas menos custo dos produtos')}${kpi('Total de vendas',current.sales.length,'▣','var(--blue)','Vendas registradas')}${kpi('Ticket médio',money(current.completed.length?current.revenue/current.completed.length:0),'◉','var(--yellow)','Média das vendas concluídas')}${kpi('Comissões pagas',money(current.commissions),'✓','var(--green)','Valores pagos')}${kpi('Comissões pendentes',money(pending),'!','var(--yellow)','Pendentes no período')}</div><div class="grid-2"><div class="panel"><div class="panel-head"><h3>Evolução financeira</h3><span class="muted">Lucro bruto × despesas · período selecionado</span></div><div class="chart">${chart}</div></div><div class="panel"><div class="panel-head"><h3>Distribuição de gastos</h3><span class="muted">Período selecionado</span></div><div class="donut-wrap">${distribution}</div></div></div>${salesTable(current.sales.slice(0,5),'Vendas recentes do período')}`;
+}
 const statusClass=s=>/Concluída|Disponível|Pago|Ativo/.test(s)?'green':/Pendente|Reservada/.test(s)?'yellow':'red';
 function salesTable(rows,title='Todas as vendas'){return `<div class="panel table-panel"><div class="panel-head"><h3>${title}</h3><span class="muted">${rows.length} registros</span></div><table><thead><tr><th>Cliente / Produto</th><th>Categoria</th><th>Valor</th><th>Lucro</th><th>Pagamento</th><th>Data</th><th>Status</th><th></th></tr></thead><tbody>${rows.map(s=>`<tr><td><b>${s.client}</b><br><span class="muted">${s.product}</span>${s.contact?`<br><span class="sale-contact">Contato: ${escapeHtml(s.contact)}</span>`:''}</td><td>${s.category}</td><td>${money(s.value)}</td><td style="color:var(--green)">${money(profit(s))}</td><td>${s.payment}</td><td>${date(s.date)}</td><td><span class="badge ${statusClass(s.status)}">${s.status}</span></td><td>${rowActions('sale','sales',s.id,s.contact,s.client)}</td></tr>`).join('')||`<tr><td colspan="8" class="empty"><b>Nenhuma venda encontrada</b>Cadastre sua primeira venda.</td></tr>`}</tbody></table></div>`}
 function sales(){return head('Gestão de vendas','Cadastre, acompanhe e filtre todas as vendas',`<button class="primary" onclick="openForm('sale')">＋ Cadastrar venda</button>`)+`<div class="filters"><input class="input" id="saleSearch" placeholder="Buscar cliente ou produto"><select id="saleStatus"><option value="">Todos os status</option><option>Concluída</option><option>Pendente</option><option>Cancelada</option></select><select id="saleCategory"><option value="">Todas as categorias</option>${db.categories.map(c=>`<option>${c.name}</option>`).join('')}</select></div><div id="salesResult">${salesTable(db.sales)}</div>`}
@@ -96,7 +151,7 @@ function customers(){
 function partners(){return genericPage('partners','Gestão de parcerias','Acordos, vencimentos e histórico de pagamentos',[['Parceiro','name'],['Tipo','type'],['Valor acordado','value','money'],['Frequência','frequency'],['Vencimento','due','date'],['Status','status']],'partner')}
 function commissionTable(rows,title,dateLabel){return `<div class="panel table-panel"><div class="panel-head"><h3>${title}</h3><span class="muted">${rows.length} registros</span></div><table><thead><tr><th>Nome</th><th>Valor</th><th>${dateLabel}</th><th>Status</th><th></th></tr></thead><tbody>${rows.map(c=>`<tr><td><b>${c.name}</b></td><td>${money(c.value)}</td><td>${date(c.date)}</td><td><span class="badge ${statusClass(c.status)}">${c.status}</span></td><td>${rowActions('commission','commissions',c.id)}</td></tr>`).join('')||`<tr><td colspan="5" class="empty"><b>Nenhuma comissão</b>Não há valores nesta situação.</td></tr>`}</tbody></table></div>`}
 function commissions(){let paid=db.commissions.filter(c=>c.status==='Pago'),pending=db.commissions.filter(c=>c.status==='Pendente'),paidTotal=paid.reduce((a,c)=>a + +c.value,0),pendingTotal=pending.reduce((a,c)=>a + +c.value,0);return head('Gestão de comissões','Pagamentos organizados por situação',`<button class="primary" onclick="openForm('commission')">＋ Nova comissão</button>`)+`<div class="commission-summary"><div class="commission-box paid"><span>TOTAL PAGO</span><strong>${money(paidTotal)}</strong></div><div class="commission-box pending"><span>TOTAL PENDENTE</span><strong>${money(pendingTotal)}</strong></div></div>${commissionTable(pending,'Comissões pendentes','Data prevista')}${commissionTable(paid,'Comissões pagas','Data do pagamento')}`}
-function reports(){return head('Relatórios','Analise e exporte os resultados da operação',`<button class="secondary" onclick="window.print()">▣ Salvar PDF</button><button class="primary" onclick="exportCSV('sales')">⇩ Exportar Excel</button>`)+`<div class="filters"><input type="date" class="input" value="${today}"><select><option>Todas as categorias</option>${db.categories.map(c=>`<option>${c.name}</option>`)}</select><button class="secondary">Aplicar filtros</button></div>${dashboard().split('<div class="grid-2">')[1]}`}
+function reports(){return head('Relatórios','Analise e exporte os resultados da operação',`<button class="secondary" onclick="window.print()">▣ Salvar PDF</button><button class="primary" onclick="openExportModal()">⇩ Exportar Excel</button>`)+`<div class="filters"><input type="date" class="input" id="dashboardStart" value="${dashboardPeriod.start}"><input type="date" class="input" id="dashboardEnd" value="${dashboardPeriod.end}"><button class="secondary" onclick="applyDashboardPeriod()">Aplicar período</button></div>${dashboard().split('<div class="grid-2">')[1]}`}
 function admin(){return head('Administração','Usuários, acessos e configuração do sistema',`<button class="primary" onclick="openForm('user')">＋ Novo usuário</button>`)+`<div class="grid-2"><div class="panel table-panel" style="margin-top:0"><div class="panel-head"><h3>Usuários e permissões</h3></div><table><thead><tr><th>Usuário</th><th>Email</th><th>Perfil</th><th>Status</th></tr></thead><tbody>${db.users.map(u=>`<tr><td>${u.name}</td><td>${u.email}</td><td>${u.role}</td><td><span class="badge green">${u.status}</span></td></tr>`).join('')}</tbody></table></div><div class="panel"><div class="panel-head"><h3>Perfis de acesso</h3></div><div class="notice-list"><div class="notice"><span class="notice-icon">♛</span><div><b>Administrador</b><p>Acesso completo a todos os módulos.</p></div></div><div class="notice"><span class="notice-icon">▤</span><div><b>Financeiro</b><p>Vendas, despesas e relatórios financeiros.</p></div></div><div class="notice"><span class="notice-icon">♙</span><div><b>Funcionário</b><p>Operação de vendas e estoque.</p></div></div></div></div></div><div class="panel" style="margin-top:14px"><div class="panel-head"><h3>Categorias e atributos dinâmicos</h3><button class="secondary" onclick="openForm('category')">＋ Adicionar</button></div>${db.categories.map(c=>`<div class="notice"><span class="notice-icon">${c.icon}</span><div><b>${c.name}</b><p>${c.fields.join(' · ')}</p></div></div>`).join('')}</div>`}
 const renderers={dashboard,sales,inventory,finance,traffic,customers,partners,commissions,reports,admin};
 function render(){renderNav();$('#content').innerHTML=renderers[page]();if(page==='sales'){const filter=()=>{let q=$('#saleSearch').value.toLowerCase(),st=$('#saleStatus').value,cat=$('#saleCategory').value;$('#salesResult').innerHTML=salesTable(db.sales.filter(s=>(s.client+s.product+(s.contact||'')).toLowerCase().includes(q)&&(!st||s.status===st)&&(!cat||s.category===cat)))};['saleSearch','saleStatus','saleCategory'].forEach(id=>$('#'+id).oninput=filter)}updateNotifications()}
@@ -118,7 +173,28 @@ function closeModal(){$('#modal').classList.remove('open')}
 function removeItem(type,id){if(confirm('Deseja remover este registro?')){db[type]=db[type].filter(x=>x.id!==id);save();render();showToast('Registro removido')}}
 function showToast(t){$('#toast').textContent=t;$('#toast').classList.add('show');setTimeout(()=>$('#toast').classList.remove('show'),2500)}
 function updateNotifications(){let n=db.partners.filter(p=>p.status==='Pendente').length+db.commissions.filter(c=>c.status==='Pendente').length;$('#notifyCount').textContent=n;$('#notifyCount').style.display=n?'block':'none'}
-function exportCSV(type){let rows=db[type];if(!rows.length)return;let keys=[...new Set(rows.flatMap(Object.keys))].filter(k=>k!=='attrs'),csv=[keys.join(';'),...rows.map(r=>keys.map(k=>`"${String(r[k]??'').replaceAll('"','""')}"`).join(';'))].join('\n'),blob=new Blob(['\ufeff'+csv],{type:'text/csv'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`pixelsale-${type}.csv`;a.click();URL.revokeObjectURL(a.href)}
+function openExportModal(){
+  const {start,end}=dashboardPeriod;
+  $('#modalBody').innerHTML=`<h2>Exportar relatório Excel</h2><div class="modal-sub">Escolha o período que será incluído no arquivo.</div><form id="exportForm"><div class="form-grid"><div class="field"><label>Data inicial</label><input name="start" type="date" value="${start}" required></div><div class="field"><label>Data final</label><input name="end" type="date" value="${end}" required></div></div><div class="export-info"><b>O arquivo terá três abas:</b><span>Resumo financeiro, vendas detalhadas e evolução mensal.</span></div><div class="form-actions"><button type="button" class="secondary" onclick="closeModal()">Cancelar</button><button class="primary">Baixar .xlsx</button></div></form>`;
+  $('#modal').classList.add('open');
+  $('#exportForm').onsubmit=e=>{e.preventDefault();const values=Object.fromEntries(new FormData(e.target));if(values.start>values.end)return showToast('Informe um período válido.');exportExcel(values.start,values.end)};
+}
+function exportExcel(start,end){
+  if(!window.XLSX)return showToast('Não foi possível carregar o gerador de Excel.');
+  const rows=db.sales.filter(s=>inPeriod(s.date,start,end)),summary=financialRange(start,end),months=dashboardMonths(start,end),wb=XLSX.utils.book_new();
+  const summaryData=[['RELATÓRIO PIXELSALE'],['Período',`${date(start)} a ${date(end)}`],['Gerado em',new Date().toLocaleString('pt-BR')],[],['INDICADOR','VALOR'],['Faturamento bruto',summary.revenue],['Custo dos produtos nas vendas',summary.saleCosts],['Lucro bruto',summary.grossProfit],['Despesas financeiras',summary.expenses],['Lucro líquido',summary.net],['Total de vendas',summary.sales.length],['Vendas concluídas',summary.completed.length],['Ticket médio',summary.completed.length?summary.revenue/summary.completed.length:0]];
+  const wsSummary=XLSX.utils.aoa_to_sheet(summaryData);wsSummary['!cols']=[{wch:34},{wch:22}];
+  for(let row=6;row<=10;row++){const cell=wsSummary[`B${row}`];if(cell)cell.z='R$ #,##0.00'}
+  if(wsSummary.B13)wsSummary.B13.z='R$ #,##0.00';
+  const salesData=[['Cliente','Contato','Produto','Categoria','Valor da venda','Custo do produto','Lucro da venda','Comissão','Parceria','Pagamento','Plataforma','Data','Status'],...rows.map(s=>[s.client,s.contact||'',s.product,s.category,Number(s.value||0),Number(s.cost||0),profit(s),Number(s.commission||0),Number(s.partnership||0),s.payment,s.platform||'',new Date(`${s.date}T12:00:00`),s.status])];
+  const wsSales=XLSX.utils.aoa_to_sheet(salesData,{cellDates:true});wsSales['!cols']=[{wch:24},{wch:20},{wch:48},{wch:22},{wch:16},{wch:18},{wch:17},{wch:14},{wch:14},{wch:14},{wch:18},{wch:13},{wch:14}];wsSales['!autofilter']={ref:`A1:M${Math.max(1,salesData.length)}`};
+  for(let row=2;row<=salesData.length;row++){for(const col of ['E','F','G','H','I'])wsSales[`${col}${row}`].z='R$ #,##0.00';wsSales[`L${row}`].z='dd/mm/yyyy'}
+  const evolutionData=[['Mês','Faturamento','Custo dos produtos','Lucro bruto','Despesas','Lucro líquido'],...months.map(m=>[m.label,m.revenue,m.saleCosts,m.grossProfit,m.expenses,m.net])];
+  const wsEvolution=XLSX.utils.aoa_to_sheet(evolutionData);wsEvolution['!cols']=[{wch:16},{wch:18},{wch:20},{wch:18},{wch:18},{wch:18}];wsEvolution['!autofilter']={ref:`A1:F${evolutionData.length}`};
+  for(let row=2;row<=evolutionData.length;row++)for(const col of ['B','C','D','E','F'])wsEvolution[`${col}${row}`].z='R$ #,##0.00';
+  XLSX.utils.book_append_sheet(wb,wsSummary,'Resumo');XLSX.utils.book_append_sheet(wb,wsSales,'Vendas');XLSX.utils.book_append_sheet(wb,wsEvolution,'Evolução mensal');
+  XLSX.writeFile(wb,`PixelSale_${start}_a_${end}.xlsx`,{compression:true,cellStyles:true});closeModal();showToast('Relatório Excel gerado com sucesso.');
+}
 $('#modalClose').onclick=closeModal;$('#modal').onclick=e=>{if(e.target===$('#modal'))closeModal()};$('#quickAdd').onclick=()=>openForm('sale');$('#menuBtn').onclick=()=>$('#sidebar').classList.toggle('open');$('#notifyBtn').onclick=()=>{let pending=[...db.partners.filter(p=>p.status==='Pendente').map(p=>`Parceiro: ${p.name}`),...db.commissions.filter(c=>c.status==='Pendente').map(c=>`Comissão: ${c.name}`)];$('#modalBody').innerHTML=`<h2>Central de notificações</h2><div class="modal-sub">Pendências que precisam de atenção</div><div class="notice-list">${pending.map(x=>`<div class="notice"><span class="notice-icon">!</span><div><b>${x}</b><p>Pagamento pendente ou próximo do vencimento.</p></div></div>`).join('')||'<div class="empty">Tudo em dia por aqui.</div>'}</div>`;$('#modal').classList.add('open')};$('#globalSearch').onkeydown=e=>{if(e.key==='Enter'){page='sales';render();$('#saleSearch').value=e.target.value;$('#saleSearch').dispatchEvent(new Event('input'))}};
 
 // O modal só deve fechar por uma ação explícita (fechar, cancelar ou salvar).
