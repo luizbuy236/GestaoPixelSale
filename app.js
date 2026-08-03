@@ -2,7 +2,8 @@ const $=(s,e=document)=>e.querySelector(s), $$=(s,e=document)=>[...e.querySelect
 const money=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}), date=v=>new Date(v+'T12:00:00').toLocaleDateString('pt-BR');
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const today=new Date().toISOString().slice(0,10);
-let dashboardPeriod={start:`${today.slice(0,7)}-01`,end:today};
+const currentMonthLastDay=String(new Date(Number(today.slice(0,4)),Number(today.slice(5,7)),0).getDate()).padStart(2,'0');
+let dashboardPeriod={start:`${today.slice(0,7)}-01`,end:`${today.slice(0,7)}-${currentMonthLastDay}`};
 const seed={
  sales:[],
  expenses:[],
@@ -175,24 +176,33 @@ function showToast(t){$('#toast').textContent=t;$('#toast').classList.add('show'
 function updateNotifications(){let n=db.partners.filter(p=>p.status==='Pendente').length+db.commissions.filter(c=>c.status==='Pendente').length;$('#notifyCount').textContent=n;$('#notifyCount').style.display=n?'block':'none'}
 function openExportModal(){
   const {start,end}=dashboardPeriod;
-  $('#modalBody').innerHTML=`<h2>Exportar relatório Excel</h2><div class="modal-sub">Escolha o período que será incluído no arquivo.</div><form id="exportForm"><div class="form-grid"><div class="field"><label>Data inicial</label><input name="start" type="date" value="${start}" required></div><div class="field"><label>Data final</label><input name="end" type="date" value="${end}" required></div></div><div class="export-info"><b>O arquivo terá três abas:</b><span>Resumo financeiro, vendas detalhadas e evolução mensal.</span></div><div class="form-actions"><button type="button" class="secondary" onclick="closeModal()">Cancelar</button><button class="primary">Baixar .xlsx</button></div></form>`;
+  $('#modalBody').innerHTML=`<h2>Exportar relatório Excel</h2><div class="modal-sub">Escolha o período que será incluído no arquivo.</div><form id="exportForm"><div class="form-grid"><div class="field"><label>Data inicial</label><input name="start" type="date" value="${start}" required></div><div class="field"><label>Data final</label><input name="end" type="date" value="${end}" required></div></div><div class="export-info"><b>O arquivo terá quatro abas:</b><span>Resumo, vendas, despesas detalhadas e evolução mensal.</span></div><div class="form-actions"><button type="button" class="secondary" onclick="closeModal()">Cancelar</button><button class="primary">Baixar .xlsx</button></div></form>`;
   $('#modal').classList.add('open');
   $('#exportForm').onsubmit=e=>{e.preventDefault();const values=Object.fromEntries(new FormData(e.target));if(values.start>values.end)return showToast('Informe um período válido.');exportExcel(values.start,values.end)};
 }
 function exportExcel(start,end){
   if(!window.XLSX)return showToast('Não foi possível carregar o gerador de Excel.');
   const rows=db.sales.filter(s=>inPeriod(s.date,start,end)),summary=financialRange(start,end),months=dashboardMonths(start,end),wb=XLSX.utils.book_new();
-  const summaryData=[['RELATÓRIO PIXELSALE'],['Período',`${date(start)} a ${date(end)}`],['Gerado em',new Date().toLocaleString('pt-BR')],[],['INDICADOR','VALOR'],['Faturamento bruto',summary.revenue],['Custo dos produtos nas vendas',summary.saleCosts],['Lucro bruto',summary.grossProfit],['Despesas financeiras',summary.expenses],['Lucro líquido',summary.net],['Total de vendas',summary.sales.length],['Vendas concluídas',summary.completed.length],['Ticket médio',summary.completed.length?summary.revenue/summary.completed.length:0]];
+  const summaryData=[['RELATÓRIO PIXELSALE'],['Período',`${date(start)} a ${date(end)}`],['Gerado em',new Date().toLocaleString('pt-BR')],[],['INDICADOR','VALOR'],['Faturamento bruto',summary.revenue],['Custo dos produtos nas vendas',summary.saleCosts],['Lucro bruto',summary.grossProfit],['Despesas financeiras',summary.expenses],['  Produtos',summary.productCosts],['  Tráfego',summary.traffic],['  Parcerias',summary.partnerships],['  Comissões',summary.commissions],['  Outros',summary.other],['Lucro líquido',summary.net],['Total de vendas',summary.sales.length],['Vendas concluídas',summary.completed.length],['Ticket médio',summary.completed.length?summary.revenue/summary.completed.length:0]];
   const wsSummary=XLSX.utils.aoa_to_sheet(summaryData);wsSummary['!cols']=[{wch:34},{wch:22}];
-  for(let row=6;row<=10;row++){const cell=wsSummary[`B${row}`];if(cell)cell.z='R$ #,##0.00'}
-  if(wsSummary.B13)wsSummary.B13.z='R$ #,##0.00';
+  for(let row=6;row<=15;row++){const cell=wsSummary[`B${row}`];if(cell)cell.z='R$ #,##0.00'}
+  if(wsSummary.B18)wsSummary.B18.z='R$ #,##0.00';
   const salesData=[['Cliente','Contato','Produto','Categoria','Valor da venda','Custo do produto','Lucro da venda','Comissão','Parceria','Pagamento','Plataforma','Data','Status'],...rows.map(s=>[s.client,s.contact||'',s.product,s.category,Number(s.value||0),Number(s.cost||0),profit(s),Number(s.commission||0),Number(s.partnership||0),s.payment,s.platform||'',new Date(`${s.date}T12:00:00`),s.status])];
   const wsSales=XLSX.utils.aoa_to_sheet(salesData,{cellDates:true});wsSales['!cols']=[{wch:24},{wch:20},{wch:48},{wch:22},{wch:16},{wch:18},{wch:17},{wch:14},{wch:14},{wch:14},{wch:18},{wch:13},{wch:14}];wsSales['!autofilter']={ref:`A1:M${Math.max(1,salesData.length)}`};
   for(let row=2;row<=salesData.length;row++){for(const col of ['E','F','G','H','I'])wsSales[`${col}${row}`].z='R$ #,##0.00';wsSales[`L${row}`].z='dd/mm/yyyy'}
+  const expenseRows=[
+    ...db.expenses.filter(e=>inPeriod(e.date,start,end)).map(e=>({source:'Financeiro',category:e.category,description:e.description,value:Number(e.value||0),date:e.date,payment:e.payment||'',status:e.notes||''})),
+    ...db.partners.filter(p=>inPeriod(p.due,start,end)&&p.status!=='Inativo').map(p=>({source:'Parcerias',category:'Parcerias',description:p.name,value:Number(p.value||0),date:p.due,payment:p.frequency||'',status:p.status||''})),
+    ...db.campaigns.filter(c=>inPeriod(c.start,start,end)).map(c=>({source:'Tráfego pago',category:'Tráfego pago',description:c.name,value:Number(c.value||0),date:c.start,payment:c.platform||'',status:c.notes||''})),
+    ...db.commissions.filter(c=>inPeriod(c.date,start,end)&&c.status==='Pago').map(c=>({source:'Comissões',category:'Comissões',description:c.name,value:Number(c.value||0),date:c.date,payment:'',status:c.status||''}))
+  ].sort((a,b)=>b.date.localeCompare(a.date));
+  const expensesData=[['Origem','Categoria','Descrição','Valor','Data','Pagamento / Frequência','Status / Observação'],...expenseRows.map(e=>[e.source,e.category,e.description,e.value,new Date(`${e.date}T12:00:00`),e.payment,e.status])];
+  const wsExpenses=XLSX.utils.aoa_to_sheet(expensesData,{cellDates:true});wsExpenses['!cols']=[{wch:18},{wch:20},{wch:40},{wch:16},{wch:13},{wch:24},{wch:24}];wsExpenses['!autofilter']={ref:`A1:G${Math.max(1,expensesData.length)}`};
+  for(let row=2;row<=expensesData.length;row++){wsExpenses[`D${row}`].z='R$ #,##0.00';wsExpenses[`E${row}`].z='dd/mm/yyyy'}
   const evolutionData=[['Mês','Faturamento','Custo dos produtos','Lucro bruto','Despesas','Lucro líquido'],...months.map(m=>[m.label,m.revenue,m.saleCosts,m.grossProfit,m.expenses,m.net])];
   const wsEvolution=XLSX.utils.aoa_to_sheet(evolutionData);wsEvolution['!cols']=[{wch:16},{wch:18},{wch:20},{wch:18},{wch:18},{wch:18}];wsEvolution['!autofilter']={ref:`A1:F${evolutionData.length}`};
   for(let row=2;row<=evolutionData.length;row++)for(const col of ['B','C','D','E','F'])wsEvolution[`${col}${row}`].z='R$ #,##0.00';
-  XLSX.utils.book_append_sheet(wb,wsSummary,'Resumo');XLSX.utils.book_append_sheet(wb,wsSales,'Vendas');XLSX.utils.book_append_sheet(wb,wsEvolution,'Evolução mensal');
+  XLSX.utils.book_append_sheet(wb,wsSummary,'Resumo');XLSX.utils.book_append_sheet(wb,wsSales,'Vendas');XLSX.utils.book_append_sheet(wb,wsExpenses,'Despesas');XLSX.utils.book_append_sheet(wb,wsEvolution,'Evolução mensal');
   XLSX.writeFile(wb,`PixelSale_${start}_a_${end}.xlsx`,{compression:true,cellStyles:true});closeModal();showToast('Relatório Excel gerado com sucesso.');
 }
 $('#modalClose').onclick=closeModal;$('#modal').onclick=e=>{if(e.target===$('#modal'))closeModal()};$('#quickAdd').onclick=()=>openForm('sale');$('#menuBtn').onclick=()=>$('#sidebar').classList.toggle('open');$('#notifyBtn').onclick=()=>{let pending=[...db.partners.filter(p=>p.status==='Pendente').map(p=>`Parceiro: ${p.name}`),...db.commissions.filter(c=>c.status==='Pendente').map(c=>`Comissão: ${c.name}`)];$('#modalBody').innerHTML=`<h2>Central de notificações</h2><div class="modal-sub">Pendências que precisam de atenção</div><div class="notice-list">${pending.map(x=>`<div class="notice"><span class="notice-icon">!</span><div><b>${x}</b><p>Pagamento pendente ou próximo do vencimento.</p></div></div>`).join('')||'<div class="empty">Tudo em dia por aqui.</div>'}</div>`;$('#modal').classList.add('open')};$('#globalSearch').onkeydown=e=>{if(e.key==='Enter'){page='sales';render();$('#saleSearch').value=e.target.value;$('#saleSearch').dispatchEvent(new Event('input'))}};
