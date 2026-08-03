@@ -23,7 +23,7 @@ if(localStorage.getItem('pixelsale-data-reset')!==dataResetVersion){
   localStorage.setItem('pixelsale-data-reset',dataResetVersion);
 }
 let page='dashboard';
-const save=()=>localStorage.setItem('pixelsale-db',JSON.stringify(db));
+const save=()=>{db.partners.forEach(p=>p.createdAt=p.createdAt||recordCreatedDate(p)||today);localStorage.setItem('pixelsale-db',JSON.stringify(db))};
 const nav=[['Visão geral','dashboard','▦','Dashboard'],['Operação','sales','↗','Vendas'],['Operação','inventory','◇','Contas Roblox'],['Financeiro','finance','◉','Financeiro'],['Financeiro','traffic','⌁','Tráfego pago'],['Relacionamentos','customers','♙','Clientes'],['Relacionamentos','partners','♧','Parcerias'],['Relacionamentos','commissions','♙','Comissões'],['Gestão','reports','▥','Relatórios'],['Gestão','admin','⚙','Administração']];
 function renderNav(){let last='';$('#nav').innerHTML=nav.map(n=>{let s=n[0]!==last?`<div class="nav-section">${last=n[0]}</div>`:'';return s+`<button class="nav-btn ${page===n[1]?'active':''}" data-page="${n[1]}"><span class="nav-icon">${n[2]}</span>${n[3]}</button>`}).join('');$$('.nav-btn').forEach(b=>b.onclick=()=>{page=b.dataset.page;render();$('#sidebar').classList.remove('open')})}
 const head=(t,s,actions='')=>`<div class="page-head"><div><h1>${t}</h1><p>${s}</p></div><div class="head-actions">${actions}</div></div>`;
@@ -74,6 +74,15 @@ function dashboardLegacy(){
 }
 const inPeriod=(value,start,end)=>Boolean(value&&value>=start&&value<=end);
 const sumRows=(rows,field='value')=>rows.reduce((total,row)=>total+Number(row[field]||0),0);
+const recordCreatedDate=record=>{
+  if(record.createdAt)return String(record.createdAt).slice(0,10);
+  const id=String(record.id||'');
+  if(id.length>5){
+    const timestamp=parseInt(id.slice(0,-4),36),created=new Date(timestamp);
+    if(Number.isFinite(timestamp)&&created.getFullYear()>=2020&&created.getFullYear()<=2100)return created.toISOString().slice(0,10);
+  }
+  return record.date||record.start||record.due||'';
+};
 function financialRange(start,end){
   const sales=db.sales.filter(s=>inPeriod(s.date,start,end));
   const completed=sales.filter(s=>s.status==='Concluída');
@@ -82,7 +91,7 @@ function financialRange(start,end){
   const classified=new Set([...productCategories,'Tráfego pago','Parcerias','Comissões']);
   const productCosts=sumRows(financial.filter(e=>productCategories.includes(e.category)));
   const traffic=sumRows(db.campaigns.filter(c=>inPeriod(c.start,start,end)))+sumRows(financial.filter(e=>e.category==='Tráfego pago'));
-  const partnerships=sumRows(db.partners.filter(p=>inPeriod(p.due,start,end)&&p.status!=='Inativo'))+sumRows(financial.filter(e=>e.category==='Parcerias'));
+  const partnerships=sumRows(db.partners.filter(p=>inPeriod(recordCreatedDate(p),start,end)&&p.status!=='Inativo'))+sumRows(financial.filter(e=>e.category==='Parcerias'));
   const commissions=sumRows(db.commissions.filter(c=>inPeriod(c.date,start,end)&&c.status==='Pago'))+sumRows(financial.filter(e=>e.category==='Comissões'));
   const other=sumRows(financial.filter(e=>!classified.has(e.category)));
   const revenue=sumRows(completed),saleCosts=sumRows(completed,'cost'),grossProfit=revenue-saleCosts,expenses=productCosts+traffic+partnerships+commissions+other;
@@ -192,13 +201,13 @@ function exportExcel(start,end){
   for(let row=2;row<=salesData.length;row++){for(const col of ['E','F','G','H','I'])wsSales[`${col}${row}`].z='R$ #,##0.00';wsSales[`L${row}`].z='dd/mm/yyyy'}
   const expenseRows=[
     ...db.expenses.filter(e=>inPeriod(e.date,start,end)).map(e=>({source:'Financeiro',category:e.category,description:e.description,value:Number(e.value||0),date:e.date,payment:e.payment||'',status:e.notes||''})),
-    ...db.partners.filter(p=>inPeriod(p.due,start,end)&&p.status!=='Inativo').map(p=>({source:'Parcerias',category:'Parcerias',description:p.name,value:Number(p.value||0),date:p.due,payment:p.frequency||'',status:p.status||''})),
+    ...db.partners.filter(p=>inPeriod(recordCreatedDate(p),start,end)&&p.status!=='Inativo').map(p=>({source:'Parcerias',category:'Parcerias',description:p.name,value:Number(p.value||0),date:recordCreatedDate(p),due:p.due||'',payment:p.frequency||'',status:p.status||''})),
     ...db.campaigns.filter(c=>inPeriod(c.start,start,end)).map(c=>({source:'Tráfego pago',category:'Tráfego pago',description:c.name,value:Number(c.value||0),date:c.start,payment:c.platform||'',status:c.notes||''})),
     ...db.commissions.filter(c=>inPeriod(c.date,start,end)&&c.status==='Pago').map(c=>({source:'Comissões',category:'Comissões',description:c.name,value:Number(c.value||0),date:c.date,payment:'',status:c.status||''}))
   ].sort((a,b)=>b.date.localeCompare(a.date));
-  const expensesData=[['Origem','Categoria','Descrição','Valor','Data','Pagamento / Frequência','Status / Observação'],...expenseRows.map(e=>[e.source,e.category,e.description,e.value,new Date(`${e.date}T12:00:00`),e.payment,e.status])];
-  const wsExpenses=XLSX.utils.aoa_to_sheet(expensesData,{cellDates:true});wsExpenses['!cols']=[{wch:18},{wch:20},{wch:40},{wch:16},{wch:13},{wch:24},{wch:24}];wsExpenses['!autofilter']={ref:`A1:G${Math.max(1,expensesData.length)}`};
-  for(let row=2;row<=expensesData.length;row++){wsExpenses[`D${row}`].z='R$ #,##0.00';wsExpenses[`E${row}`].z='dd/mm/yyyy'}
+  const expensesData=[['Origem','Categoria','Descrição','Valor','Data do registro','Vencimento','Pagamento / Frequência','Status / Observação'],...expenseRows.map(e=>[e.source,e.category,e.description,e.value,new Date(`${e.date}T12:00:00`),e.due?new Date(`${e.due}T12:00:00`):'',e.payment,e.status])];
+  const wsExpenses=XLSX.utils.aoa_to_sheet(expensesData,{cellDates:true});wsExpenses['!cols']=[{wch:18},{wch:20},{wch:40},{wch:16},{wch:17},{wch:13},{wch:24},{wch:24}];wsExpenses['!autofilter']={ref:`A1:H${Math.max(1,expensesData.length)}`};
+  for(let row=2;row<=expensesData.length;row++){wsExpenses[`D${row}`].z='R$ #,##0.00';wsExpenses[`E${row}`].z='dd/mm/yyyy';if(wsExpenses[`F${row}`])wsExpenses[`F${row}`].z='dd/mm/yyyy'}
   const evolutionData=[['Mês','Faturamento','Custo dos produtos','Lucro bruto','Despesas','Lucro líquido'],...months.map(m=>[m.label,m.revenue,m.saleCosts,m.grossProfit,m.expenses,m.net])];
   const wsEvolution=XLSX.utils.aoa_to_sheet(evolutionData);wsEvolution['!cols']=[{wch:16},{wch:18},{wch:20},{wch:18},{wch:18},{wch:18}];wsEvolution['!autofilter']={ref:`A1:F${evolutionData.length}`};
   for(let row=2;row<=evolutionData.length;row++)for(const col of ['B','C','D','E','F'])wsEvolution[`${col}${row}`].z='R$ #,##0.00';
