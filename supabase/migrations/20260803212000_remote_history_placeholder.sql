@@ -1,0 +1,2 @@
+-- Migração já aplicada no projeto remoto antes desta cópia local.
+-- Este marcador preserva o histórico sem repetir alterações no banco.
