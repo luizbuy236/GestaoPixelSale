@@ -14,7 +14,7 @@ Deno.serve(async request=>{
     if(conversation?.atendimento_started_at||conversation?.status==='closed')return new Response('active attendance: notification suppressed',{status:200})
     const {data:subscriptions}=await supabase.from('support_push_subscriptions').select('id,endpoint,p256dh,auth')
     const payload=JSON.stringify({title:`Nova mensagem de ${conversation?.customer_name||'cliente'}`,body:message.message_type==='image'?'📷 Imagem':message.body,tag:`pixelsale-chat-${message.conversation_id}`,url:'/?page=support'})
-    await Promise.all((subscriptions||[]).map(async subscription=>{try{await webpush.sendNotification({endpoint:subscription.endpoint,keys:{p256dh:subscription.p256dh,auth:subscription.auth}},payload)}catch(error){if(error?.statusCode===404||error?.statusCode===410)await supabase.from('support_push_subscriptions').delete().eq('id',subscription.id);else console.error(error)}}))
+    await Promise.all((subscriptions||[]).map(async subscription=>{try{await webpush.sendNotification({endpoint:subscription.endpoint,keys:{p256dh:subscription.p256dh,auth:subscription.auth}},payload,{TTL:86400,urgency:'high'})}catch(error){if(error?.statusCode===404||error?.statusCode===410)await supabase.from('support_push_subscriptions').delete().eq('id',subscription.id);else console.error(error)}}))
     return new Response('sent',{status:200})
   }catch(error){console.error(error);return new Response('error',{status:500})}
 })

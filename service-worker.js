@@ -1,9 +1,11 @@
+self.addEventListener('install',()=>self.skipWaiting());
+self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));
 self.addEventListener('push',event=>{
   let data={};try{data=event.data?.json()||{}}catch{data={body:event.data?.text()}}
   event.waitUntil(self.registration.showNotification(data.title||'Nova mensagem — PixelSale',{
     body:data.body||'Um cliente enviou uma nova mensagem.',
     icon:'/assets/pixelsale-logo.png',badge:'/assets/pixelsale-logo.png',
-    tag:data.tag||'pixelsale-chat',renotify:true,vibrate:[300,120,300,120,500],
+    tag:data.tag||'pixelsale-chat',renotify:true,silent:false,requireInteraction:true,vibrate:[300,120,300,120,500],
     data:{url:data.url||'/?page=support'}
   }));
 });
