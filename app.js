@@ -9,6 +9,7 @@ const supabaseClient=window.supabase.createClient(
   'sb_publishable_sfyRmHH7ScK1Kt4sOw5lOQ_HwkjrRUR'
 );
 const ADMIN_EMAIL='lluiz7628rd@gmail.com';
+const PUSH_PUBLIC_KEY='BBsMx8l85hsIMXt4Mdb1wymb3EUMjbISRg7v1fq8UHEGKrKcQatCH-Ln-mYiLbOvPejvtUie24yY_T7-J4adcK0';
 const seed={
  sales:[],
  expenses:[],
@@ -29,7 +30,7 @@ if(localStorage.getItem('pixelsale-data-reset')!==dataResetVersion){
   localStorage.setItem('pixelsale-db',JSON.stringify(db));
   localStorage.setItem('pixelsale-data-reset',dataResetVersion);
 }
-let page='dashboard';
+let page=new URLSearchParams(location.search).get('page')==='support'?'support':'dashboard';
 let activeChatId=null,chatPollTimer=null,chatConversations=[],lastChatUnreadTotal=null,chatAudioContext=null;
 /* Versão local substituída pela sincronização do Supabase.
 const save=()=>localStorage.setItem('pixelsale-db',JSON.stringify(db));
@@ -228,12 +229,18 @@ function commissionTable(rows,title,dateLabel){return `<div class="panel table-p
 function commissions(){let paid=db.commissions.filter(c=>c.status==='Pago'),pending=db.commissions.filter(c=>c.status==='Pendente'),paidTotal=paid.reduce((a,c)=>a + +c.value,0),pendingTotal=pending.reduce((a,c)=>a + +c.value,0);return head('Gestão de comissões','Pagamentos organizados por situação',`<button class="primary" onclick="openForm('commission')">＋ Nova comissão</button>`)+`<div class="commission-summary"><div class="commission-box paid"><span>TOTAL PAGO</span><strong>${money(paidTotal)}</strong></div><div class="commission-box pending"><span>TOTAL PENDENTE</span><strong>${money(pendingTotal)}</strong></div></div>${commissionTable(pending,'Comissões pendentes','Data prevista')}${commissionTable(paid,'Comissões pagas','Data do pagamento')}`}
 function reports(){return head('Relatórios','Analise e exporte os resultados da operação',`<button class="secondary" onclick="window.print()">▣ Salvar PDF</button><button class="primary" onclick="openExportModal()">⇩ Exportar Excel</button>`)+`<div class="filters"><input type="date" class="input" id="dashboardStart" value="${dashboardPeriod.start}"><input type="date" class="input" id="dashboardEnd" value="${dashboardPeriod.end}"><button class="secondary" onclick="applyDashboardPeriod()">Aplicar período</button></div>${dashboard().split('<div class="grid-2">')[1]}`}
 
-function support(){return head('Atendimento','Converse em tempo real com os clientes da loja',`<button class="secondary" onclick="enableChatSound()">🔊 Ativar/Testar som</button><button class="secondary" onclick="loadAdminChats()">↻ Atualizar</button>`)+`<div class="support-layout"><aside class="support-list" id="supportList"><div class="support-loading">Carregando conversas…</div></aside><section class="support-thread" id="supportThread"><div class="support-placeholder"><span>●</span><strong>Selecione uma conversa</strong><p>As mensagens do cliente aparecerão aqui.</p></div></section></div>`}
+function support(){return head('Atendimento','Converse em tempo real com os clientes da loja',`<button class="secondary" onclick="enableMobileNotifications()">🔔 Ativar notificações</button><button class="secondary" onclick="enableChatSound()">🔊 Testar som</button><button class="secondary" onclick="loadAdminChats()">↻ Atualizar</button>`)+`<div class="support-layout"><aside class="support-list" id="supportList"><div class="support-loading">Carregando conversas…</div></aside><section class="support-thread" id="supportThread"><div class="support-placeholder"><span>●</span><strong>Selecione uma conversa</strong><p>As mensagens do cliente aparecerão aqui.</p></div></section></div>`}
 const chatTime=value=>new Date(value).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
 async function unlockChatAudio(){const AudioEngine=window.AudioContext||window.webkitAudioContext;if(!AudioEngine)return false;if(!chatAudioContext)chatAudioContext=new AudioEngine();if(chatAudioContext.state==='suspended')await chatAudioContext.resume();return chatAudioContext.state==='running'}
 document.addEventListener('pointerdown',unlockChatAudio);document.addEventListener('keydown',unlockChatAudio);
 async function playChatAlert(){if(!await unlockChatAudio())return false;const now=chatAudioContext.currentTime,master=chatAudioContext.createGain(),compressor=chatAudioContext.createDynamicsCompressor();master.gain.value=1;compressor.threshold.value=-18;compressor.knee.value=8;compressor.ratio.value=5;compressor.attack.value=.003;compressor.release.value=.2;master.connect(compressor).connect(chatAudioContext.destination);[0,.28,.56,1.05,1.33,1.61,2.1,2.38,2.66].forEach((delay,index)=>{[760,1040,1380].forEach((frequency,layer)=>{const oscillator=chatAudioContext.createOscillator(),gain=chatAudioContext.createGain();oscillator.type=layer===1?'square':'sawtooth';oscillator.frequency.value=frequency+(index%2?90:0);gain.gain.setValueAtTime(.0001,now+delay);gain.gain.exponentialRampToValueAtTime(.95,now+delay+.012);gain.gain.setValueAtTime(.95,now+delay+.18);gain.gain.exponentialRampToValueAtTime(.0001,now+delay+.27);oscillator.connect(gain).connect(master);oscillator.start(now+delay);oscillator.stop(now+delay+.29)})});setTimeout(()=>{master.disconnect();compressor.disconnect()},3300);const originalTitle=document.title;document.title='🔴 NOVA MENSAGEM — PixelSale';setTimeout(()=>document.title=originalTitle,7000);if('Notification'in window&&Notification.permission==='granted')new Notification('Nova mensagem no atendimento',{body:'Um cliente enviou uma nova mensagem.',tag:'pixelsale-chat',requireInteraction:true});return true}
 async function enableChatSound(){if('Notification'in window&&Notification.permission==='default')await Notification.requestPermission();const worked=await playChatAlert();showToast(worked?'Som do atendimento ativado.':'O navegador bloqueou o som. Verifique se a aba está silenciada.')}
+function urlBase64ToUint8Array(value){const padding='='.repeat((4-value.length%4)%4),base64=(value+padding).replace(/-/g,'+').replace(/_/g,'/'),raw=atob(base64);return Uint8Array.from([...raw].map(char=>char.charCodeAt(0)))}
+async function enableMobileNotifications(){
+  if(!('serviceWorker'in navigator)||!('PushManager'in window))return showToast('Este navegador não oferece notificações push. Use o Chrome no Android.');
+  const permission=await Notification.requestPermission();if(permission!=='granted')return showToast('Permita as notificações nas configurações do navegador.');
+  try{const registration=await navigator.serviceWorker.ready;let subscription=await registration.pushManager.getSubscription();if(!subscription)subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(PUSH_PUBLIC_KEY)});const json=subscription.toJSON();const {error}=await supabaseClient.rpc('chat_push_subscribe',{p_endpoint:subscription.endpoint,p_p256dh:json.keys.p256dh,p_auth:json.keys.auth});if(error)throw error;await registration.showNotification('PixelSale',{body:'Notificações de novas mensagens ativadas neste celular.',icon:'/assets/pixelsale-logo.png',badge:'/assets/pixelsale-logo.png',tag:'pixelsale-enabled'});showToast('Notificações ativadas neste celular.')}catch(error){console.error(error);showToast('Não foi possível ativar as notificações.')}
+}
 function updateChatUnreadAlert(rows){const unreadTotal=(rows||[]).reduce((total,item)=>total+Number(item.unread_admin||0),0);if(unreadTotal>0&&(lastChatUnreadTotal===null||unreadTotal>lastChatUnreadTotal))playChatAlert();lastChatUnreadTotal=unreadTotal}
 async function pollChatNotifications(){const {data,error}=await supabaseClient.rpc('chat_admin_list');if(!error)updateChatUnreadAlert(data)}
 async function loadAdminChats(){
@@ -363,6 +370,7 @@ $('#forgotPassword').onclick=async()=>{let email=$('#loginForm [name=email]').va
 $('#logoutBtn').onclick=async()=>{await supabaseClient.auth.signOut();showLogin()};
 $('#mfaBtn').onclick=configureTotp;
 async function initializeApp(){
+  if('serviceWorker'in navigator)navigator.serviceWorker.register('/service-worker.js').catch(error=>console.error('Falha ao registrar notificações:',error));
   const {data:{session}}=await supabaseClient.auth.getSession();
   if(!session)return showLogin();
   try{const {data}=await supabaseClient.auth.mfa.getAuthenticatorAssuranceLevel();if(data.nextLevel==='aal2'&&data.currentLevel!=='aal2')return showLogin();await loadDatabase();showApp()}catch(error){console.error('Falha ao carregar dados do Supabase:',error);showToast('Não foi possível carregar os dados do Supabase.');showLogin()}

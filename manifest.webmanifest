@@ -1,0 +1,13 @@
+{
+  "name": "PixelSale Gestão",
+  "short_name": "PixelSale",
+  "description": "Gestão e atendimento PixelSale",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#090b10",
+  "theme_color": "#090b10",
+  "icons": [
+    {"src": "/assets/pixelsale-logo.png", "sizes": "1080x1080", "type": "image/png", "purpose": "any maskable"}
+  ]
+}

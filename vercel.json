@@ -11,6 +11,14 @@
       "use": "@vercel/static"
     },
     {
+      "src": "service-worker.js",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "manifest.webmanifest",
+      "use": "@vercel/static"
+    },
+    {
       "src": "*.css",
       "use": "@vercel/static"
     },
