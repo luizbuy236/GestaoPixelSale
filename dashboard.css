@@ -163,3 +163,4 @@
 @media(max-width:800px){.support-layout{grid-template-columns:1fr;height:auto;min-height:0}.support-list{max-height:260px;border-right:0;border-bottom:1px solid #292930}.support-thread{min-height:520px}.support-message{max-width:86%}}
 
 .support-message-image{padding:5px}.support-message-image img{display:block;width:min(360px,100%);max-height:360px;border-radius:9px;object-fit:cover;cursor:zoom-in}
+.support-thread-actions{display:flex;align-items:center;gap:9px}.support-awaiting{padding:16px;border-top:1px solid #292930;background:#111116;color:var(--muted);font-size:12px;text-align:center}
