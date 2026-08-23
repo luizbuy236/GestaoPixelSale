@@ -31,7 +31,7 @@ if(localStorage.getItem('pixelsale-data-reset')!==dataResetVersion){
   localStorage.setItem('pixelsale-data-reset',dataResetVersion);
 }
 let page=new URLSearchParams(location.search).get('page')==='support'?'support':'dashboard';
-let activeChatId=null,chatPollTimer=null,chatConversations=[],lastChatUnreadTotal=null,chatAudioContext=null,sendingSticker=false;
+let activeChatId=null,chatPollTimer=null,chatConversations=[],lastChatUnreadTotal=null,lastChatUnreadByConversation=new Map(),chatAudioContext=null,sendingSticker=false;
 /* Versão local substituída pela sincronização do Supabase.
 const save=()=>localStorage.setItem('pixelsale-db',JSON.stringify(db));
 const nav=[['Visão geral','dashboard','▦','Dashboard'],['Operação','sales','↗','Vendas'],['Operação','inventory','◇','Contas Roblox'],['Financeiro','finance','◉','Financeiro'],['Financeiro','traffic','⌁','Tráfego pago'],['Relacionamentos','customers','♙','Clientes'],['Relacionamentos','partners','♧','Parcerias'],['Relacionamentos','commissions','♙','Comissões'],['Atendimento','support','●','Mensagens'],['Gestão','reports','▥','Relatórios'],['Gestão','admin','⚙','Administração']];
@@ -244,7 +244,7 @@ async function enableMobileNotifications(){
   await syncMobilePush(true);
 }
 async function syncMobilePush(showConfirmation=false){try{const registration=await navigator.serviceWorker.ready;let subscription=await registration.pushManager.getSubscription();if(!subscription)subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(PUSH_PUBLIC_KEY)});const json=subscription.toJSON();const {error}=await supabaseClient.rpc('chat_push_subscribe',{p_endpoint:subscription.endpoint,p_p256dh:json.keys.p256dh,p_auth:json.keys.auth});if(error)throw error;if(showConfirmation){await registration.showNotification('PixelSale',{body:'Notificações de novas mensagens ativadas neste celular.',icon:'/assets/pixelsale-logo.png',badge:'/assets/pixelsale-logo.png',tag:'pixelsale-enabled'});showToast('Notificações ativadas neste celular.')}return true}catch(error){console.error(error);if(showConfirmation)showToast('Não foi possível ativar as notificações.');return false}}
-function updateChatUnreadAlert(rows){const unreadTotal=(rows||[]).filter(item=>!item.atendimento_started_at&&item.status!=='closed').reduce((total,item)=>total+Number(item.unread_admin||0),0);if(unreadTotal>0&&(lastChatUnreadTotal===null||unreadTotal>lastChatUnreadTotal))playChatAlert();lastChatUnreadTotal=unreadTotal}
+function updateChatUnreadAlert(rows){const viewingActive=page==='support'&&document.visibilityState==='visible'&&document.hasFocus();const current=new Map((rows||[]).map(item=>[item.id,Number(item.unread_admin||0)]));const shouldAlert=(rows||[]).some(item=>item.status!=='closed'&&!(viewingActive&&item.id===activeChatId)&&Number(item.unread_admin||0)>(lastChatUnreadByConversation.get(item.id)||0));if(shouldAlert)playChatAlert();lastChatUnreadByConversation=current;lastChatUnreadTotal=[...current.values()].reduce((total,value)=>total+value,0)}
 async function pollChatNotifications(){const {data,error}=await supabaseClient.rpc('chat_admin_list');if(!error)updateChatUnreadAlert(data)}
 async function loadAdminChats(){
   const list=$('#supportList');if(!list)return;
