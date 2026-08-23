@@ -240,8 +240,9 @@ function urlBase64ToUint8Array(value){const padding='='.repeat((4-value.length%4
 async function enableMobileNotifications(){
   if(!('serviceWorker'in navigator)||!('PushManager'in window))return showToast('Este navegador não oferece notificações push. Use o Chrome no Android.');
   const permission=await Notification.requestPermission();if(permission!=='granted')return showToast('Permita as notificações nas configurações do navegador.');
-  try{const registration=await navigator.serviceWorker.ready;let subscription=await registration.pushManager.getSubscription();if(!subscription)subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(PUSH_PUBLIC_KEY)});const json=subscription.toJSON();const {error}=await supabaseClient.rpc('chat_push_subscribe',{p_endpoint:subscription.endpoint,p_p256dh:json.keys.p256dh,p_auth:json.keys.auth});if(error)throw error;await registration.showNotification('PixelSale',{body:'Notificações de novas mensagens ativadas neste celular.',icon:'/assets/pixelsale-logo.png',badge:'/assets/pixelsale-logo.png',tag:'pixelsale-enabled'});showToast('Notificações ativadas neste celular.')}catch(error){console.error(error);showToast('Não foi possível ativar as notificações.')}
+  await syncMobilePush(true);
 }
+async function syncMobilePush(showConfirmation=false){try{const registration=await navigator.serviceWorker.ready;let subscription=await registration.pushManager.getSubscription();if(!subscription)subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(PUSH_PUBLIC_KEY)});const json=subscription.toJSON();const {error}=await supabaseClient.rpc('chat_push_subscribe',{p_endpoint:subscription.endpoint,p_p256dh:json.keys.p256dh,p_auth:json.keys.auth});if(error)throw error;if(showConfirmation){await registration.showNotification('PixelSale',{body:'Notificações de novas mensagens ativadas neste celular.',icon:'/assets/pixelsale-logo.png',badge:'/assets/pixelsale-logo.png',tag:'pixelsale-enabled'});showToast('Notificações ativadas neste celular.')}return true}catch(error){console.error(error);if(showConfirmation)showToast('Não foi possível ativar as notificações.');return false}}
 function updateChatUnreadAlert(rows){const unreadTotal=(rows||[]).filter(item=>!item.atendimento_started_at&&item.status!=='closed').reduce((total,item)=>total+Number(item.unread_admin||0),0);if(unreadTotal>0&&(lastChatUnreadTotal===null||unreadTotal>lastChatUnreadTotal))playChatAlert();lastChatUnreadTotal=unreadTotal}
 async function pollChatNotifications(){const {data,error}=await supabaseClient.rpc('chat_admin_list');if(!error)updateChatUnreadAlert(data)}
 async function loadAdminChats(){
@@ -329,7 +330,7 @@ $('#modalClose').onclick=closeModal;$('#modal').onclick=e=>{if(e.target===$('#mo
 
 // O modal só deve fechar por uma ação explícita (fechar, cancelar ou salvar).
 $('#modal').onclick=null;
-function showApp(){ $('#loginScreen').classList.add('is-hidden');$('#appShell').classList.remove('is-locked');render() }
+function showApp(){ $('#loginScreen').classList.add('is-hidden');$('#appShell').classList.remove('is-locked');render();if('Notification'in window&&Notification.permission==='granted')syncMobilePush(false) }
 function showLogin(){ $('#loginScreen').classList.remove('is-hidden');$('#appShell').classList.add('is-locked') }
 async function verifiedTotpFactor(){
   const {data,error}=await supabaseClient.auth.mfa.listFactors();
