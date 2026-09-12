@@ -3,6 +3,12 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 const source=fs.readFileSync('app.js','utf8');
+test('authenticated interface is permanently dedicated to support',()=>{
+ assert.match(source,/let page='support';/);
+ assert.match(source,/class="support-app-header"/);
+ assert.match(source,/id="supportList"/);
+ assert.match(source,/id="supportThread"/);
+});
 function setup(){
  const nodes=new Map(),sent=[],dialogs=[];
  const node=()=>({value:'',innerHTML:'',scrollHeight:500,scrollTop:0,clientHeight:100,children:[],querySelectorAll:()=>[],append(...items){this.children.push(...items)},addEventListener(name,fn){this[name]=fn},showModal(){this.open=true},close(){this.open=false;this.closeEvent?.()},remove(){this.removed=true}});
