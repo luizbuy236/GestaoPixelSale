@@ -14,6 +14,11 @@ test('authentication session is persisted and refreshed automatically',()=>{
  assert.match(source,/autoRefreshToken:true/);
  assert.match(source,/storage:window\.localStorage/);
 });
+test('automatic notice is delivered as a regular chat message',()=>{
+ const migration=fs.readFileSync('supabase/migrations/20260912040000_deliver_notice_when_loading_chat.sql','utf8');
+ assert.match(migration,/perform public\.chat_deliver_active_notice\(p_conversation_id\)/);
+ assert.match(migration,/⚠️ Aviso de atendimento/);
+});
 function setup(){
  const nodes=new Map(),sent=[],dialogs=[];
  const node=()=>({value:'',innerHTML:'',scrollHeight:500,scrollTop:0,clientHeight:100,children:[],querySelectorAll:()=>[],append(...items){this.children.push(...items)},addEventListener(name,fn){this[name]=fn},showModal(){this.open=true},close(){this.open=false;this.closeEvent?.()},remove(){this.removed=true}});
