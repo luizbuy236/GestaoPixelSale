@@ -318,7 +318,7 @@ function renderSupportMessage(message){
   const src=message.message_type==='image'&&/^(?:data:image\/(?:png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]+$|https?:\/\/)/i.test(media)?media:'';
   const content=src?'<button type="button" class="support-image-open" aria-label="Ampliar imagem"><img src="'+escapeHtml(src)+'" alt="Imagem enviada no chat" loading="lazy" decoding="async"></button>':'<div class="support-message-text">'+renderSupportText(message.body)+'</div>';
   const copyButton=src?'':'<button type="button" class="support-message-action" data-copy-message="'+escapeHtml(message.body)+'" title="Copiar mensagem" aria-label="Copiar mensagem">Copiar</button>';
-  return '<div class="support-message '+(message.sender==='admin'?'support-message-admin':'')+' '+(src?'support-message-image':'')+'" data-message-id="'+escapeHtml(message.id)+'">'+content+'<div class="support-message-meta"><time>'+chatTime(message.created_at)+'</time><span class="support-message-actions">'+copyButton+'<button type="button" class="support-message-action support-message-delete" data-delete-message="'+escapeHtml(message.id)+'" title="Excluir somente para mim" aria-label="Excluir somente para mim">Excluir</button></span></div></div>';
+  return '<div class="support-message '+(message.sender==='admin'?'support-message-admin':'')+' '+(src?'support-message-image':'')+'" data-message-id="'+escapeHtml(message.id)+'">'+content+'<div class="support-message-meta"><time>'+chatTime(message.created_at)+'</time><span class="support-message-actions">'+copyButton+'<button type="button" class="support-message-action support-message-delete" data-delete-message="'+escapeHtml(message.id)+'" title="Excluir para todos" aria-label="Excluir para todos">Excluir</button></span></div></div>';
 }
 function bindSupportImages(container=$('#supportMessages')){
   container?.querySelectorAll('.support-image-open').forEach(button=>button.onclick=()=>{
@@ -335,10 +335,10 @@ function bindSupportMessageActions(container=$('#supportMessages')){
   container.querySelectorAll('[data-delete-message]').forEach(button=>button.onclick=()=>deleteAdminMessage(button.dataset.deleteMessage));
 }
 async function deleteAdminMessage(messageId){
-  if(!confirm('Excluir esta mensagem somente para você?'))return;
-  const {error}=await supabaseClient.rpc('chat_admin_hide_message',{p_message_id:messageId});
+  if(!confirm('Excluir esta mensagem para todos? Esta ação não pode ser desfeita.'))return;
+  const {error}=await supabaseClient.rpc('chat_admin_delete_message',{p_message_id:messageId});
   if(error){console.error(error);return showToast('Não foi possível excluir a mensagem.');}
-  lastMessageSignatures.delete(activeChatId);showToast('Mensagem excluída somente para você.');await loadAdminChats(true);
+  lastMessageSignatures.delete(activeChatId);showToast('Mensagem excluída para todos.');await loadAdminMessages(false,true);loadAdminChats(true);
 }
 async function loadAdminMessages(scroll=true,force=false){
   const thread=$('#supportThread');if(!thread||!activeChatId)return;

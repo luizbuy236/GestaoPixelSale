@@ -43,10 +43,10 @@ test('an update requested during an active message load is queued instead of los
  const first=c.loadAdminMessages(false);await Promise.resolve();await c.loadAdminMessages(false,true);assert.equal(calls,1);
  release();await first;await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,2);
 });
-test('message controls copy text and hide only for the signed-in admin',async()=>{
+test('message controls copy text and delete the message for everyone',async()=>{
  const {context:c,sent,node}=setup(),copy=node(),remove=node();copy.dataset={copyMessage:'Mensagem completa'};remove.dataset={deleteMessage:'message-1'};
  c.bindSupportMessageActions({querySelectorAll:selector=>selector==='[data-copy-message]'?[copy]:[remove]});
  await copy.onclick();await remove.onclick();
  assert.deepEqual(sent.find(x=>x.name==='clipboard'),{name:'clipboard',text:'Mensagem completa'});
- assert.equal(sent.find(x=>x.name==='chat_admin_hide_message').args.p_message_id,'message-1');
+ assert.equal(sent.find(x=>x.name==='chat_admin_delete_message').args.p_message_id,'message-1');
 });
