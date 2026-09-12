@@ -9,6 +9,11 @@ test('authenticated interface is permanently dedicated to support',()=>{
  assert.match(source,/id="supportList"/);
  assert.match(source,/id="supportThread"/);
 });
+test('authentication session is persisted and refreshed automatically',()=>{
+ assert.match(source,/persistSession:true/);
+ assert.match(source,/autoRefreshToken:true/);
+ assert.match(source,/storage:window\.localStorage/);
+});
 function setup(){
  const nodes=new Map(),sent=[],dialogs=[];
  const node=()=>({value:'',innerHTML:'',scrollHeight:500,scrollTop:0,clientHeight:100,children:[],querySelectorAll:()=>[],append(...items){this.children.push(...items)},addEventListener(name,fn){this[name]=fn},showModal(){this.open=true},close(){this.open=false;this.closeEvent?.()},remove(){this.removed=true}});

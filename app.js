@@ -6,7 +6,8 @@ const currentMonthLastDay=String(new Date(Number(today.slice(0,4)),Number(today.
 let dashboardPeriod={start:`${today.slice(0,7)}-01`,end:`${today.slice(0,7)}-${currentMonthLastDay}`};
 const supabaseClient=window.supabase.createClient(
   'https://pglafsnqlrkgcvnakyyi.supabase.co',
-  'sb_publishable_sfyRmHH7ScK1Kt4sOw5lOQ_HwkjrRUR'
+  'sb_publishable_sfyRmHH7ScK1Kt4sOw5lOQ_HwkjrRUR',
+  {auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,storage:window.localStorage}}
 );
 const ADMIN_EMAIL='lluiz7628rd@gmail.com';
 const PUSH_PUBLIC_KEY='BBsMx8l85hsIMXt4Mdb1wymb3EUMjbISRg7v1fq8UHEGKrKcQatCH-Ln-mYiLbOvPejvtUie24yY_T7-J4adcK0';
@@ -488,8 +489,12 @@ $('#logoutBtn').onclick=async()=>{await supabaseClient.auth.signOut();showLogin(
 $('#mfaBtn').onclick=configureTotp;
 async function initializeApp(){
   if('serviceWorker'in navigator)navigator.serviceWorker.register('/service-worker.js').catch(error=>console.error('Falha ao registrar notificações:',error));
-  const {data:{session}}=await supabaseClient.auth.getSession();
-  if(!session)return showLogin();
-  try{const {data}=await supabaseClient.auth.mfa.getAuthenticatorAssuranceLevel();if(data.nextLevel==='aal2'&&data.currentLevel!=='aal2')return showLogin();await loadDatabase();showApp()}catch(error){console.error('Falha ao carregar dados do Supabase:',error);showToast('Não foi possível carregar os dados do Supabase.');showLogin()}
+  const {data:{session},error:sessionError}=await supabaseClient.auth.getSession();
+  if(sessionError||!session)return showLogin();
+  try{
+    const {data,error}=await supabaseClient.auth.mfa.getAuthenticatorAssuranceLevel();if(error)throw error;
+    if(data.nextLevel==='aal2'&&data.currentLevel!=='aal2'){const factor=await verifiedTotpFactor();if(factor)await verifyTotp(factor)}
+    await loadDatabase();showApp();
+  }catch(error){console.error('Falha ao restaurar a sessão do Supabase:',error);showToast('Não foi possível restaurar o acesso automático.');showLogin()}
 }
 initializeApp();
