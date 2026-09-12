@@ -6,7 +6,7 @@ const source=fs.readFileSync('app.js','utf8');
 function setup(){
  const nodes=new Map(),sent=[],dialogs=[];
  const node=()=>({value:'',innerHTML:'',scrollHeight:500,scrollTop:0,clientHeight:100,children:[],querySelectorAll:()=>[],append(...items){this.children.push(...items)},addEventListener(name,fn){this[name]=fn},showModal(){this.open=true},close(){this.open=false;this.closeEvent?.()},remove(){this.removed=true}});
- const context={console,URL,Event,confirm:()=>true,navigator:{clipboard:{writeText:async text=>sent.push({name:'clipboard',text})}},loadingAdminMessages:false,lastMessageSignatures:new Map(),CHAT_EMOJIS:[],CHAT_STICKERS:[],activeChatId:'test',sendingSticker:false,chatConversations:[{id:'test',status:'open',atendimento_started_at:'2026-01-01'}],chatTime:()=>'',decorateSupportMessages(){},showToast(){},setAdminChatStatus(){},startAdminChat(){},loadAdminChats:async()=>{},document:{activeElement:null,createElement:()=>{const n=node();n.addEventListener=(name,fn)=>n[name+'Event']=fn;return n},body:{append:n=>dialogs.push(n)}},$:(selector)=>nodes.get(selector),$$:()=>[],supabaseClient:{rpc:async(name,args)=>{sent.push({name,args});return {data:[],error:null}}}};
+ const context={console,URL,Event,confirm:()=>true,queueMicrotask,navigator:{clipboard:{writeText:async text=>sent.push({name:'clipboard',text})}},loadingAdminMessages:false,pendingAdminMessagesLoad:false,pendingAdminMessagesForce:false,lastMessageSignatures:new Map(),CHAT_EMOJIS:[],CHAT_STICKERS:[],activeChatId:'test',sendingSticker:false,chatConversations:[{id:'test',status:'open',atendimento_started_at:'2026-01-01'}],chatTime:()=>'',decorateSupportMessages(){},showToast(){},setAdminChatStatus(){},startAdminChat(){},loadAdminChats:async()=>{},document:{activeElement:null,createElement:()=>{const n=node();n.addEventListener=(name,fn)=>n[name+'Event']=fn;return n},body:{append:n=>dialogs.push(n)}},$:(selector)=>nodes.get(selector),$$:()=>[],supabaseClient:{rpc:async(name,args)=>{sent.push({name,args});return {data:[],error:null}}}};
  for(const id of ['#supportThread','#supportMessages','#supportReply textarea','#supportReply','#supportEmojiToggle','#supportEmojiPicker','#supportStickerToggle','#supportStickerPicker','#supportStatus','#supportReply button[type="submit"]'])nodes.set(id,node());
  nodes.get('#supportReply').requestSubmit=()=>context.submitted=true;
  vm.createContext(context);
@@ -36,6 +36,12 @@ test('send passes multiline text to service unchanged',async()=>{
 });
 test('polling preserves draft while updating messages',async()=>{
  const {context:c,nodes}=setup();nodes.get('#supportReply textarea').value='Rascunho\nSegunda linha';await c.loadAdminMessages(false);assert.equal(nodes.get('#supportReply textarea').value,'Rascunho\nSegunda linha');
+});
+test('an update requested during an active message load is queued instead of lost',async()=>{
+ const {context:c}=setup();let release,calls=0;
+ c.supabaseClient.rpc=async()=>{calls++;if(calls===1)await new Promise(resolve=>release=resolve);return {data:[],error:null}};
+ const first=c.loadAdminMessages(false);await Promise.resolve();await c.loadAdminMessages(false,true);assert.equal(calls,1);
+ release();await first;await new Promise(resolve=>setImmediate(resolve));assert.equal(calls,2);
 });
 test('message controls copy text and hide only for the signed-in admin',async()=>{
  const {context:c,sent,node}=setup(),copy=node(),remove=node();copy.dataset={copyMessage:'Mensagem completa'};remove.dataset={deleteMessage:'message-1'};

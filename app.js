@@ -31,7 +31,7 @@ if(localStorage.getItem('pixelsale-data-reset')!==dataResetVersion){
   localStorage.setItem('pixelsale-data-reset',dataResetVersion);
 }
 let page=new URLSearchParams(location.search).get('page')==='support'?'support':'dashboard';
-let activeChatId=null,chatPollTimer=null,chatConversations=[],lastChatUnreadTotal=null,lastChatUnreadByConversation=new Map(),chatAudioContext=null,sendingSticker=false,loadingAdminChats=false,loadingAdminMessages=false,lastChatListSignature='',lastMessageSignatures=new Map();
+let activeChatId=null,chatPollTimer=null,chatRealtimeChannel=null,chatRealtimeRefreshTimer=null,chatConversations=[],lastChatUnreadTotal=null,lastChatUnreadByConversation=new Map(),chatAudioContext=null,sendingSticker=false,loadingAdminChats=false,loadingAdminMessages=false,pendingAdminChatsLoad=false,pendingAdminChatsForce=false,pendingAdminMessagesLoad=false,pendingAdminMessagesForce=false,lastChatListSignature='',lastMessageSignatures=new Map();
 /* Versão local substituída pela sincronização do Supabase.
 const save=()=>localStorage.setItem('pixelsale-db',JSON.stringify(db));
 const nav=[['Visão geral','dashboard','▦','Dashboard'],['Operação','sales','↗','Vendas'],['Operação','inventory','◇','Contas Roblox'],['Financeiro','finance','◉','Financeiro'],['Financeiro','traffic','⌁','Tráfego pago'],['Relacionamentos','customers','♙','Clientes'],['Relacionamentos','partners','♧','Parcerias'],['Relacionamentos','commissions','♙','Comissões'],['Atendimento','support','●','Mensagens'],['Gestão','reports','▥','Relatórios'],['Gestão','admin','⚙','Administração']];
@@ -231,7 +231,23 @@ function reports(){return head('Relatórios','Analise e exporte os resultados da
 
 const CHAT_EMOJIS=['😀','😁','😂','🥰','😍','😎','🤩','🥳','😊','🤔','😢','😭','😡','👍','👎','👏','🙏','💪','❤️','🔥','✅','❌','⚠️','🎉','🎁','💰','🛒','📦','🚀','📱'];
 const CHAT_STICKERS=[['assets/stickers/obrigado-square.jpg','Obrigado pela compra'],['assets/stickers/coracao-square.jpg','Coração'],['assets/stickers/misterio-square.jpg','Caixa misteriosa'],['assets/stickers/positivo-square.jpg','Positivo']];
-function support(){return head('Atendimento','Converse em tempo real com os clientes da loja',`<button class="secondary" onclick="enableMobileNotifications()">🔔 Ativar notificações</button><button class="secondary" onclick="enableChatSound()">🔊 Testar som</button><button class="secondary" onclick="loadAdminChats()">↻ Atualizar</button>`)+`<div class="support-layout"><aside class="support-list" id="supportList"><div class="support-loading">Carregando conversas…</div></aside><section class="support-thread" id="supportThread"><div class="support-placeholder"><span>●</span><strong>Selecione uma conversa</strong><p>As mensagens do cliente aparecerão aqui.</p></div></section></div>`}
+function support(){return head('Atendimento','Converse em tempo real com os clientes da loja',`<button class="secondary" type="button" onclick="toggleSupportNoticePanel()">⚠️ Configurar aviso</button><button class="secondary" onclick="enableMobileNotifications()">🔔 Ativar notificações</button><button class="secondary" onclick="enableChatSound()">🔊 Testar som</button><button class="secondary" onclick="loadAdminChats()">↻ Atualizar</button>`)+`<section class="support-notice-panel" id="supportNoticePanel" hidden><div class="panel-head"><div><h3>Aviso automático no chat</h3><span class="muted">Será enviado ao cliente quando ele abrir o chat durante o período configurado.</span></div><span class="support-notice-state" id="supportNoticeState">Carregando…</span></div><form id="supportNoticeForm"><label class="support-notice-toggle"><input type="checkbox" name="enabled"> Aviso ativado</label><label class="support-notice-message">Mensagem<textarea name="message" maxlength="2000" rows="3" placeholder="Voltarei com o atendimento às 20:00."></textarea></label><label>Início<input type="datetime-local" name="starts_at" required></label><label>Término<input type="datetime-local" name="ends_at" required></label><button class="primary" type="submit">Salvar aviso</button></form><div class="support-notice-preview"><strong>⚠️ Aviso de atendimento</strong><span id="supportNoticePreview">Digite uma mensagem para visualizar.</span></div></section><div class="support-layout"><aside class="support-list" id="supportList"><div class="support-loading">Carregando conversas…</div></aside><section class="support-thread" id="supportThread"><div class="support-placeholder"><span>●</span><strong>Selecione uma conversa</strong><p>As mensagens do cliente aparecerão aqui.</p></div></section></div>`}
+const toDatetimeLocal=value=>{if(!value)return '';const dateValue=new Date(value),offset=dateValue.getTimezoneOffset()*60000;return new Date(dateValue-offset).toISOString().slice(0,16)};
+function updateSupportNoticePreview(){const form=$('#supportNoticeForm'),preview=$('#supportNoticePreview');if(preview)preview.textContent=form?.elements.message.value.trim()||'Digite uma mensagem para visualizar.'}
+function toggleSupportNoticePanel(){const panel=$('#supportNoticePanel');if(!panel)return;panel.hidden=!panel.hidden;if(!panel.hidden)loadSupportNoticeConfig()}
+async function loadSupportNoticeConfig(){
+  const form=$('#supportNoticeForm');if(!form)return;
+  const {data,error}=await supabaseClient.rpc('chat_admin_notice_get');if(error){console.error(error);$('#supportNoticeState').textContent='Erro ao carregar';return}
+  const notice=data?.[0]||{};form.elements.enabled.checked=Boolean(notice.enabled);form.elements.message.value=notice.message||'';form.elements.starts_at.value=toDatetimeLocal(notice.starts_at);form.elements.ends_at.value=toDatetimeLocal(notice.ends_at);updateSupportNoticePreview();updateSupportNoticeState(notice);
+}
+function updateSupportNoticeState(notice){const state=$('#supportNoticeState');if(!state)return;const now=Date.now(),active=notice.enabled&&new Date(notice.starts_at).getTime()<=now&&new Date(notice.ends_at).getTime()>now;state.textContent=active?'Ativo agora':notice.enabled?'Agendado':'Desativado';state.className=`support-notice-state ${active?'is-active':''}`}
+async function saveSupportNotice(event){
+  event.preventDefault();const form=event.currentTarget,button=form.querySelector('button[type="submit"]'),values=new FormData(form),startsAt=new Date(values.get('starts_at')),endsAt=new Date(values.get('ends_at')),message=String(values.get('message')||'').trim();
+  const enabled=values.get('enabled')==='on';if(enabled&&!message)return showToast('Escreva a mensagem do aviso.');if(Number.isNaN(startsAt.getTime())||Number.isNaN(endsAt.getTime())||endsAt<=startsAt)return showToast('O término deve ser posterior ao início.');button.disabled=true;
+  const payload={p_enabled:enabled,p_message:message,p_starts_at:startsAt.toISOString(),p_ends_at:endsAt.toISOString()};
+  try{const {error}=await supabaseClient.rpc('chat_admin_notice_save',payload);if(error)throw error;updateSupportNoticeState({enabled:payload.p_enabled,starts_at:payload.p_starts_at,ends_at:payload.p_ends_at});showToast('Aviso automático salvo.')}catch(error){console.error(error);showToast(error.message||'Não foi possível salvar o aviso.')}finally{button.disabled=false}
+}
+function bindSupportNoticeForm(){const form=$('#supportNoticeForm');if(!form)return;form.onsubmit=saveSupportNotice;form.elements.message.oninput=updateSupportNoticePreview}
 const chatTime=value=>new Date(value).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
 function supportMessageAvatar(sender){return sender==='admin'?'<img src="assets/pixelsale-logo.png" alt="">':'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg>'}
 function decorateSupportMessages(container=$('#supportMessages')){if(!container)return;[...container.children].forEach(message=>{if(!message.classList.contains('support-message'))return;const sender=message.classList.contains('support-message-admin')?'admin':'customer',row=document.createElement('div'),avatar=document.createElement('span');row.className=`support-message-row support-message-row-${sender}`;avatar.className='support-message-avatar';avatar.innerHTML=supportMessageAvatar(sender);message.before(row);row.append(avatar,message)})}
@@ -248,16 +264,41 @@ async function enableMobileNotifications(){
 async function syncMobilePush(showConfirmation=false){try{const registration=await navigator.serviceWorker.ready;let subscription=await registration.pushManager.getSubscription();if(!subscription)subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(PUSH_PUBLIC_KEY)});const json=subscription.toJSON();const {error}=await supabaseClient.rpc('chat_push_subscribe',{p_endpoint:subscription.endpoint,p_p256dh:json.keys.p256dh,p_auth:json.keys.auth});if(error)throw error;if(showConfirmation){await registration.showNotification('PixelSale',{body:'Notificações de novas mensagens ativadas neste celular.',icon:'/assets/pixelsale-logo.png',badge:'/assets/pixelsale-logo.png',tag:'pixelsale-enabled'});showToast('Notificações ativadas neste celular.')}return true}catch(error){console.error(error);if(showConfirmation)showToast('Não foi possível ativar as notificações.');return false}}
 function updateChatUnreadAlert(rows){const viewingActive=page==='support'&&document.visibilityState==='visible'&&document.hasFocus();const current=new Map((rows||[]).map(item=>[item.id,Number(item.unread_admin||0)]));const shouldAlert=(rows||[]).some(item=>item.status!=='closed'&&!(viewingActive&&item.id===activeChatId)&&Number(item.unread_admin||0)>(lastChatUnreadByConversation.get(item.id)||0));if(shouldAlert)playChatAlert();lastChatUnreadByConversation=current;lastChatUnreadTotal=[...current.values()].reduce((total,value)=>total+value,0)}
 async function pollChatNotifications(){const {data,error}=await supabaseClient.rpc('chat_admin_list');if(!error)updateChatUnreadAlert(data)}
+function scheduleChatRefresh(){
+  clearTimeout(chatRealtimeRefreshTimer);
+  chatRealtimeRefreshTimer=setTimeout(()=>{
+    if(page==='support')loadAdminChats();else pollChatNotifications();
+  },120);
+}
+function stopChatRealtime(){
+  clearTimeout(chatRealtimeRefreshTimer);chatRealtimeRefreshTimer=null;
+  if(chatRealtimeChannel){supabaseClient.removeChannel(chatRealtimeChannel);chatRealtimeChannel=null}
+}
+function startChatRealtime(){
+  stopChatRealtime();
+  chatRealtimeChannel=supabaseClient.channel('admin-support-live')
+    .on('postgres_changes',{event:'*',schema:'public',table:'support_conversations'},scheduleChatRefresh)
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'support_messages'},scheduleChatRefresh)
+    .subscribe(status=>{if(status==='CHANNEL_ERROR'||status==='TIMED_OUT')console.warn('Chat em tempo real indisponível; mantendo atualização periódica.')});
+}
 function renderAdminChatList(force=false){const list=$('#supportList');if(!list)return;const signature=chatConversations.map(item=>[item.id,item.updated_at,item.status,item.unread_admin,item.last_message,activeChatId===item.id].join('|')).join(';');if(!force&&signature===lastChatListSignature)return;lastChatListSignature=signature;list.innerHTML=chatConversations.length?chatConversations.map(item=>`<button class="support-contact ${activeChatId===item.id?'active':''}" onclick="selectAdminChat('${item.id}')"><span class="support-avatar">${escapeHtml((item.customer_name||'V').slice(0,2).toUpperCase())}</span><span class="support-contact-copy"><strong>${escapeHtml(item.customer_name||'Visitante')}</strong><small>${escapeHtml(item.last_message||'Nova conversa')}</small><time>${chatTime(item.updated_at)}</time></span>${Number(item.unread_admin)>0?`<b>${item.unread_admin}</b>`:''}</button>`).join(''):'<div class="support-loading">Nenhuma conversa ainda.</div>'}
 async function loadAdminChats(force=false){
   const list=$('#supportList');if(!list)return;
-  if(loadingAdminChats)return;loadingAdminChats=true;
-  const {data,error}=await supabaseClient.rpc('chat_admin_list');loadingAdminChats=false;
-  if(error){console.error(error);list.innerHTML='<div class="support-loading support-error">Execute a migração do chat no Supabase para ativar o atendimento.</div>';return}
-  chatConversations=data||[];updateChatUnreadAlert(chatConversations);
-  renderAdminChatList(force);
-  if(activeChatId&&!chatConversations.some(item=>item.id===activeChatId))activeChatId=null;
-  if(activeChatId)await loadAdminMessages(false,force);
+  if(loadingAdminChats){pendingAdminChatsLoad=true;pendingAdminChatsForce=pendingAdminChatsForce||force;return}
+  loadingAdminChats=true;
+  try{
+    const previous=chatConversations.find(item=>item.id===activeChatId),previousUpdatedAt=previous?.updated_at;
+    const {data,error}=await supabaseClient.rpc('chat_admin_list');
+    if(error){console.error(error);list.innerHTML='<div class="support-loading support-error">Não foi possível sincronizar as conversas. Tentaremos novamente automaticamente.</div>';return}
+    chatConversations=data||[];updateChatUnreadAlert(chatConversations);
+    renderAdminChatList(force);
+    if(activeChatId&&!chatConversations.some(item=>item.id===activeChatId))activeChatId=null;
+    const current=chatConversations.find(item=>item.id===activeChatId);
+    if(current&&(force||current.updated_at!==previousUpdatedAt))await loadAdminMessages(false,force);
+  }catch(error){console.error(error)}finally{
+    loadingAdminChats=false;
+    if(pendingAdminChatsLoad){const nextForce=pendingAdminChatsForce;pendingAdminChatsLoad=false;pendingAdminChatsForce=false;queueMicrotask(()=>loadAdminChats(nextForce))}
+  }
 }
 async function selectAdminChat(id){if(activeChatId===id)return;activeChatId=id;renderAdminChatList(true);await loadAdminMessages(true,true)}
 function renderSupportText(value){
@@ -301,10 +342,15 @@ async function deleteAdminMessage(messageId){
 }
 async function loadAdminMessages(scroll=true,force=false){
   const thread=$('#supportThread');if(!thread||!activeChatId)return;
-  if(sendingSticker||loadingAdminMessages)return;loadingAdminMessages=true;
+  if(sendingSticker)return;
+  if(loadingAdminMessages){pendingAdminMessagesLoad=true;pendingAdminMessagesForce=pendingAdminMessagesForce||force;return}
+  loadingAdminMessages=true;
   const requestedChatId=activeChatId,conversation=chatConversations.find(item=>item.id===requestedChatId);if(!conversation){loadingAdminMessages=false;return}
   const previousInput=$('#supportReply textarea'),draft=previousInput?.value||'',restoreFocus=document.activeElement===previousInput,selectionStart=previousInput?.selectionStart,selectionEnd=previousInput?.selectionEnd;
-  const {data,error}=await supabaseClient.rpc('chat_admin_messages',{p_conversation_id:requestedChatId});loadingAdminMessages=false;if(error)return showToast('Não foi possível carregar as mensagens.');if(activeChatId!==requestedChatId)return;
+  let data,error;
+  try{({data,error}=await supabaseClient.rpc('chat_admin_messages',{p_conversation_id:requestedChatId}))}catch(requestError){error=requestError}
+  finally{loadingAdminMessages=false;if(pendingAdminMessagesLoad){const nextForce=pendingAdminMessagesForce;pendingAdminMessagesLoad=false;pendingAdminMessagesForce=false;queueMicrotask(()=>loadAdminMessages(false,nextForce))}}
+  if(error){console.error(error);return showToast('Não foi possível carregar as mensagens.');}if(activeChatId!==requestedChatId)return;
   const messageSignature=(data||[]).map(message=>`${message.id}|${message.created_at}|${message.message_type}`).join(';');
   if(!force&&messageSignature===lastMessageSignatures.get(requestedChatId))return;lastMessageSignatures.set(requestedChatId,messageSignature);
   const messagesHtml=(data||[]).map(renderSupportMessage).join('')||'<div class="support-loading">Nenhuma mensagem.</div>';
@@ -315,20 +361,28 @@ async function loadAdminMessages(scroll=true,force=false){
   decorateSupportMessages();bindSupportImages();bindSupportMessageActions();const nextInput=$('#supportReply textarea');if(nextInput){nextInput.value=draft;if(restoreFocus){nextInput.focus();if(selectionStart!=null)nextInput.setSelectionRange(selectionStart,selectionEnd)}nextInput.onkeydown=event=>{if(event.key!=='Enter'||event.isComposing)return;if(event.ctrlKey){event.preventDefault();const start=nextInput.selectionStart,end=nextInput.selectionEnd;if(nextInput.value.length-(end-start)<nextInput.maxLength){nextInput.setRangeText('\n',start,end,'end');nextInput.dispatchEvent(new Event('input',{bubbles:true}))}}else if(!event.shiftKey&&!event.altKey&&!event.metaKey){event.preventDefault();$('#supportReply').requestSubmit()}};$('#supportReply').onsubmit=sendAdminReply;$('#supportEmojiToggle').onclick=()=>{$('#supportEmojiPicker').hidden=!$('#supportEmojiPicker').hidden;$('#supportStickerPicker').hidden=true};$$('#supportEmojiPicker [data-emoji]').forEach(button=>button.onclick=()=>insertChatEmoji(button.dataset.emoji));$('#supportStickerToggle').onclick=()=>{$('#supportStickerPicker').hidden=!$('#supportStickerPicker').hidden;$('#supportEmojiPicker').hidden=true};$$('#supportStickerPicker [data-sticker]').forEach(button=>button.onclick=()=>sendAdminSticker(button.dataset.sticker,button))}if($('#startSupport'))$('#startSupport').onclick=startAdminChat;$('#supportStatus').value=conversation.status;$('#supportStatus').onchange=event=>setAdminChatStatus(event.target.value);if(scroll){const box=$('#supportMessages');box.scrollTop=box.scrollHeight}
 }
 function insertChatEmoji(emoji){const input=$('#supportReply textarea');if(!input)return;const start=input.selectionStart??input.value.length,end=input.selectionEnd??start;input.setRangeText(emoji,start,end,'end');$('#supportEmojiPicker').hidden=true;input.focus();input.dispatchEvent(new Event('input',{bubbles:true}))}
-async function sendAdminSticker(src,button){if(sendingSticker)return;sendingSticker=true;button.disabled=true;try{const response=await fetch(src);if(!response.ok)throw new Error('Figurinha indisponível');const blob=await response.blob(),mediaData=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob)});const {error}=await supabaseClient.rpc('chat_admin_send_sticker',{p_conversation_id:activeChatId,p_media_data:mediaData});if(error)throw error;showToast('Figurinha enviada.')}catch(error){console.error(error);showToast('Não foi possível enviar a figurinha.')}finally{sendingSticker=false;button.disabled=false}await loadAdminChats(true)}
+async function sendAdminSticker(src,button){if(sendingSticker)return;sendingSticker=true;button.disabled=true;try{const response=await fetch(src);if(!response.ok)throw new Error('Figurinha indisponível');const blob=await response.blob(),mediaData=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob)});const {error}=await supabaseClient.rpc('chat_admin_send_sticker',{p_conversation_id:activeChatId,p_media_data:mediaData});if(error)throw error;showToast('Figurinha enviada.')}catch(error){console.error(error);showToast('Não foi possível enviar a figurinha.')}finally{sendingSticker=false;button.disabled=false}await loadAdminMessages(false,true);loadAdminChats()}
 async function sendAdminReply(event){
   event.preventDefault();const input=$('#supportReply textarea'),body=input.value.trim();if(!body)return;
   const button=$('#supportReply button[type="submit"]');button.disabled=true;
   let {error}=await supabaseClient.rpc('chat_admin_send',{p_conversation_id:activeChatId,p_body:body});
   if(error){const restart=await supabaseClient.rpc('chat_admin_start',{p_conversation_id:activeChatId});if(!restart.error)({error}=await supabaseClient.rpc('chat_admin_send',{p_conversation_id:activeChatId,p_body:body}))}
   button.disabled=false;if(error){console.error(error);return showToast(error.message||'Não foi possível enviar a resposta. O texto foi preservado.')}
-  input.value='';await loadAdminChats(true)
+  input.value='';await loadAdminMessages(false,true);loadAdminChats()
 }
-async function startAdminChat(){const button=$('#startSupport');if(button)button.disabled=true;const {error}=await supabaseClient.rpc('chat_admin_start',{p_conversation_id:activeChatId});if(error){if(button)button.disabled=false;return showToast('Não foi possível iniciar o atendimento.')}showToast('Atendimento iniciado.');await loadAdminChats(true)}
-async function setAdminChatStatus(status){const {error}=await supabaseClient.rpc('chat_admin_status',{p_conversation_id:activeChatId,p_status:status});if(error)return showToast('Não foi possível alterar o status.');await loadAdminChats()}
+async function startAdminChat(){
+  const conversationId=activeChatId,button=$('#startSupport');if(!conversationId||button?.disabled)return;if(button){button.disabled=true;button.textContent='Iniciando…'}
+  try{
+    const {error}=await supabaseClient.rpc('chat_admin_start',{p_conversation_id:conversationId});if(error)throw error;
+    if(activeChatId!==conversationId)return;
+    const conversation=chatConversations.find(item=>item.id===conversationId);if(conversation){conversation.atendimento_started_at=new Date().toISOString();conversation.status='open';conversation.updated_at=new Date().toISOString()}
+    lastMessageSignatures.delete(conversationId);renderAdminChatList(true);await loadAdminMessages(true,true);showToast('Atendimento iniciado.');loadAdminChats();
+  }catch(error){console.error(error);if(button){button.disabled=false;button.textContent='Iniciar atendimento'}showToast(error.message||'Não foi possível iniciar o atendimento.')}
+}
+async function setAdminChatStatus(status){const conversationId=activeChatId,{error}=await supabaseClient.rpc('chat_admin_status',{p_conversation_id:conversationId,p_status:status});if(error)return showToast('Não foi possível alterar o status.');const conversation=chatConversations.find(item=>item.id===conversationId);if(conversation)conversation.status=status;await loadAdminMessages(true,true);loadAdminChats()}
 function admin(){return head('Administração','Usuários, acessos e configuração do sistema',`<button class="primary" onclick="openForm('user')">＋ Novo usuário</button>`)+`<div class="grid-2"><div class="panel table-panel" style="margin-top:0"><div class="panel-head"><h3>Usuários e permissões</h3></div><table><thead><tr><th>Usuário</th><th>Email</th><th>Perfil</th><th>Status</th></tr></thead><tbody>${db.users.map(u=>`<tr><td>${u.name}</td><td>${u.email}</td><td>${u.role}</td><td><span class="badge green">${u.status}</span></td></tr>`).join('')}</tbody></table></div><div class="panel"><div class="panel-head"><h3>Perfis de acesso</h3></div><div class="notice-list"><div class="notice"><span class="notice-icon">♛</span><div><b>Administrador</b><p>Acesso completo a todos os módulos.</p></div></div><div class="notice"><span class="notice-icon">▤</span><div><b>Financeiro</b><p>Vendas, despesas e relatórios financeiros.</p></div></div><div class="notice"><span class="notice-icon">♙</span><div><b>Funcionário</b><p>Operação de vendas e estoque.</p></div></div></div></div></div><div class="panel" style="margin-top:14px"><div class="panel-head"><h3>Categorias e atributos dinâmicos</h3><button class="secondary" onclick="openForm('category')">＋ Adicionar</button></div>${db.categories.map(c=>`<div class="notice"><span class="notice-icon">${c.icon}</span><div><b>${c.name}</b><p>${c.fields.join(' · ')}</p></div></div>`).join('')}</div>`}
 const renderers={dashboard,sales,inventory,finance,traffic,customers,partners,commissions,support,reports,admin};
-function render(){clearInterval(chatPollTimer);renderNav();$('#content').innerHTML=renderers[page]();if(page==='sales'){const filter=()=>{let q=$('#saleSearch').value.toLowerCase(),st=$('#saleStatus').value,cat=$('#saleCategory').value;$('#salesResult').innerHTML=salesTable(db.sales.filter(s=>(s.client+s.product+(s.contact||'')).toLowerCase().includes(q)&&(!st||s.status===st)&&(!cat||s.category===cat)))};['saleSearch','saleStatus','saleCategory'].forEach(id=>$('#'+id).oninput=filter)}const poll=page==='support'?loadAdminChats:pollChatNotifications;poll();chatPollTimer=setInterval(poll,3000);updateNotifications()}
+function render(){clearInterval(chatPollTimer);renderNav();$('#content').innerHTML=renderers[page]();if(page==='sales'){const filter=()=>{let q=$('#saleSearch').value.toLowerCase(),st=$('#saleStatus').value,cat=$('#saleCategory').value;$('#salesResult').innerHTML=salesTable(db.sales.filter(s=>(s.client+s.product+(s.contact||'')).toLowerCase().includes(q)&&(!st||s.status===st)&&(!cat||s.category===cat)))};['saleSearch','saleStatus','saleCategory'].forEach(id=>$('#'+id).oninput=filter)}if(page==='support')bindSupportNoticeForm();const poll=page==='support'?loadAdminChats:pollChatNotifications;poll();chatPollTimer=setInterval(poll,page==='support'?10000:15000);updateNotifications()}
 const forms={
  sale:['Nova venda','Registre a venda e calcule o lucro automaticamente',[['client','Cliente','text'],['contact','Contato','text'],['product','Produto','text'],['category','Categoria','category'],['value','Valor da venda','number'],['cost','Custo do produto','number'],['commission','Comissão','number'],['partnership','Parceria','number'],['payment','Forma de pagamento','select:PIX,Cartão,Boleto,Dinheiro'],['platform','Plataforma','text'],['date','Data','date'],['status','Status','select:Concluída,Pendente,Cancelada']],'sales'],
  account:['Nova conta Roblox','Credenciais e dados do estoque',[['name','Nome da conta','text'],['login','Login','text'],['password','Senha','text'],['email','Email','email'],['emailPassword','Senha do email','text'],['category','Categoria','category'],['buy','Valor de compra','number'],['sell','Valor de venda','number'],['status','Status','select:Disponível,Reservada,Vendida']],'accounts'],
@@ -387,8 +441,8 @@ $('#modalClose').onclick=closeModal;$('#modal').onclick=e=>{if(e.target===$('#mo
 
 // O modal só deve fechar por uma ação explícita (fechar, cancelar ou salvar).
 $('#modal').onclick=null;
-function showApp(){ $('#loginScreen').classList.add('is-hidden');$('#appShell').classList.remove('is-locked');render();if('Notification'in window&&Notification.permission==='granted')syncMobilePush(false) }
-function showLogin(){ $('#loginScreen').classList.remove('is-hidden');$('#appShell').classList.add('is-locked') }
+function showApp(){ $('#loginScreen').classList.add('is-hidden');$('#appShell').classList.remove('is-locked');startChatRealtime();render();if('Notification'in window&&Notification.permission==='granted')syncMobilePush(false) }
+function showLogin(){ stopChatRealtime();clearInterval(chatPollTimer);$('#loginScreen').classList.remove('is-hidden');$('#appShell').classList.add('is-locked') }
 async function verifiedTotpFactor(){
   const {data,error}=await supabaseClient.auth.mfa.listFactors();
   if(error)throw error;
