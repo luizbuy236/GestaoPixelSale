@@ -50,6 +50,12 @@ test('Enter sends and Ctrl+Enter inserts newline',async()=>{
 test('send passes multiline text to service unchanged',async()=>{
  const {context:c,nodes,sent}=setup();const body='Oi, tudo bem\nComo voce esta?\nTudo ok?';nodes.get('#supportReply textarea').value=body;await c.sendAdminReply({preventDefault(){}});assert.equal(sent.find(x=>x.name==='chat_admin_send').args.p_body,body);assert.equal(nodes.get('#supportReply textarea').value,'');
 });
+test('staff can reply to an open conversation without starting it first',()=>{
+ assert.match(source,/conversation\.status!==['"]closed['"]\?`<form class="support-reply"/);
+ const migration=fs.readFileSync('supabase/migrations/20260920000000_staff_can_send_directly.sql','utf8');
+ assert.match(migration,/atendimento_started_at=coalesce\(atendimento_started_at,now\(\)\)/);
+ assert.doesNotMatch(migration,/atendimento_started_at is not null/);
+});
 test('polling preserves draft while updating messages',async()=>{
  const {context:c,nodes}=setup();nodes.get('#supportReply textarea').value='Rascunho\nSegunda linha';await c.loadAdminMessages(false);assert.equal(nodes.get('#supportReply textarea').value,'Rascunho\nSegunda linha');
 });
