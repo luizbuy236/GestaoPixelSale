@@ -51,6 +51,11 @@ test('staff image upload calls the image RPC',async()=>{
  assert.equal(sent.find(x=>x.name==='chat_admin_send_image').args.p_media_data,'data:image/png;base64,YQ==');
  assert.equal(input.value,'');
 });
+test('staff image upload accepts up to 10 MB',()=>{
+ assert.match(source,/file\.size>10000000/);
+ const migration=fs.readFileSync('supabase/migrations/20260920020000_admin_images_up_to_10mb.sql','utf8');
+ assert.match(migration,/char_length\(v_media\)>14000000/);
+});
 test('Enter sends and Ctrl+Enter inserts newline',async()=>{
  const {context:c,nodes}=setup();await c.loadAdminMessages();const input=nodes.get('#supportReply textarea');let prevented=false;const event={key:'Enter',preventDefault(){prevented=true}};
  input.value='Ola mundo';input.selectionStart=3;input.selectionEnd=4;input.maxLength=2000;
