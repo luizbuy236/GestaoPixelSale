@@ -23,7 +23,7 @@ function setup(){
  const nodes=new Map(),sent=[],dialogs=[];
  const node=()=>({value:'',innerHTML:'',scrollHeight:500,scrollTop:0,clientHeight:100,children:[],querySelectorAll:()=>[],append(...items){this.children.push(...items)},addEventListener(name,fn){this[name]=fn},showModal(){this.open=true},close(){this.open=false;this.closeEvent?.()},remove(){this.removed=true}});
  const context={console,URL,Event,confirm:()=>true,queueMicrotask,navigator:{clipboard:{writeText:async text=>sent.push({name:'clipboard',text})}},loadingAdminMessages:false,pendingAdminMessagesLoad:false,pendingAdminMessagesForce:false,lastMessageSignatures:new Map(),supportSearchQuery:'',CHAT_EMOJIS:[],CHAT_STICKERS:[],activeChatId:'test',sendingSticker:false,chatConversations:[{id:'test',status:'open',atendimento_started_at:'2026-01-01'}],chatTime:()=>'',decorateSupportMessages(){},showToast(){},setAdminChatStatus(){},startAdminChat(){},loadAdminChats:async()=>{},document:{activeElement:null,createElement:()=>{const n=node();n.addEventListener=(name,fn)=>n[name+'Event']=fn;return n},body:{append:n=>dialogs.push(n)}},$:(selector)=>nodes.get(selector),$$:()=>[],supabaseClient:{rpc:async(name,args)=>{sent.push({name,args});return {data:[],error:null}}}};
- for(const id of ['#supportThread','#supportMessages','#supportReply textarea','#supportReply','#supportEmojiToggle','#supportEmojiPicker','#supportStickerToggle','#supportStickerPicker','#supportStatus','#supportReply button[type="submit"]'])nodes.set(id,node());
+ for(const id of ['#supportThread','#supportMessages','#supportReply textarea','#supportReply','#supportImageInput','#supportEmojiToggle','#supportEmojiPicker','#supportStickerToggle','#supportStickerPicker','#supportStatus','#supportReply button[type="submit"]'])nodes.set(id,node());
  nodes.get('#supportReply').requestSubmit=()=>context.submitted=true;
  vm.createContext(context);
  vm.runInContext(source.match(/const escapeHtml=.*;/)[0]+source.slice(source.indexOf('function normalizeSupportSearch'),source.indexOf('const toDatetimeLocal'))+source.slice(source.indexOf('function renderSupportText'),source.indexOf('async function startAdminChat')),context);
@@ -44,6 +44,12 @@ test('sent and received messages retain lines and clickable links',()=>{
 test('images open in a dialog that can be closed',()=>{
  const {context:c,dialogs,node}=setup();const image=node();image.querySelector=()=>({src:'data:image/png;base64,YQ=='});c.bindSupportImages({querySelectorAll:()=>[image]});image.onclick();assert.equal(dialogs[0].open,true);assert.equal(dialogs[0].children[1].src,'data:image/png;base64,YQ==');dialogs[0].children[0].onclick();assert.equal(dialogs[0].removed,true);
  assert.doesNotMatch(c.renderSupportMessage({message_type:'image',media_data:'javascript:alert(1)'}),/src=/);
+});
+test('staff image upload calls the image RPC',async()=>{
+ const {context:c,nodes,sent}=setup();c.FileReader=class{readAsDataURL(){this.result='data:image/png;base64,YQ==';this.onload()}};
+ const input=nodes.get('#supportImageInput'),file={type:'image/png',size:100};await c.sendAdminImage(file,input);
+ assert.equal(sent.find(x=>x.name==='chat_admin_send_image').args.p_media_data,'data:image/png;base64,YQ==');
+ assert.equal(input.value,'');
 });
 test('Enter sends and Ctrl+Enter inserts newline',async()=>{
  const {context:c,nodes}=setup();await c.loadAdminMessages();const input=nodes.get('#supportReply textarea');let prevented=false;const event={key:'Enter',preventDefault(){prevented=true}};
