@@ -22,13 +22,20 @@ test('automatic notice is delivered as a regular chat message',()=>{
 function setup(){
  const nodes=new Map(),sent=[],dialogs=[];
  const node=()=>({value:'',innerHTML:'',scrollHeight:500,scrollTop:0,clientHeight:100,children:[],querySelectorAll:()=>[],append(...items){this.children.push(...items)},addEventListener(name,fn){this[name]=fn},showModal(){this.open=true},close(){this.open=false;this.closeEvent?.()},remove(){this.removed=true}});
- const context={console,URL,Event,confirm:()=>true,queueMicrotask,navigator:{clipboard:{writeText:async text=>sent.push({name:'clipboard',text})}},loadingAdminMessages:false,pendingAdminMessagesLoad:false,pendingAdminMessagesForce:false,lastMessageSignatures:new Map(),CHAT_EMOJIS:[],CHAT_STICKERS:[],activeChatId:'test',sendingSticker:false,chatConversations:[{id:'test',status:'open',atendimento_started_at:'2026-01-01'}],chatTime:()=>'',decorateSupportMessages(){},showToast(){},setAdminChatStatus(){},startAdminChat(){},loadAdminChats:async()=>{},document:{activeElement:null,createElement:()=>{const n=node();n.addEventListener=(name,fn)=>n[name+'Event']=fn;return n},body:{append:n=>dialogs.push(n)}},$:(selector)=>nodes.get(selector),$$:()=>[],supabaseClient:{rpc:async(name,args)=>{sent.push({name,args});return {data:[],error:null}}}};
+ const context={console,URL,Event,confirm:()=>true,queueMicrotask,navigator:{clipboard:{writeText:async text=>sent.push({name:'clipboard',text})}},loadingAdminMessages:false,pendingAdminMessagesLoad:false,pendingAdminMessagesForce:false,lastMessageSignatures:new Map(),supportSearchQuery:'',CHAT_EMOJIS:[],CHAT_STICKERS:[],activeChatId:'test',sendingSticker:false,chatConversations:[{id:'test',status:'open',atendimento_started_at:'2026-01-01'}],chatTime:()=>'',decorateSupportMessages(){},showToast(){},setAdminChatStatus(){},startAdminChat(){},loadAdminChats:async()=>{},document:{activeElement:null,createElement:()=>{const n=node();n.addEventListener=(name,fn)=>n[name+'Event']=fn;return n},body:{append:n=>dialogs.push(n)}},$:(selector)=>nodes.get(selector),$$:()=>[],supabaseClient:{rpc:async(name,args)=>{sent.push({name,args});return {data:[],error:null}}}};
  for(const id of ['#supportThread','#supportMessages','#supportReply textarea','#supportReply','#supportEmojiToggle','#supportEmojiPicker','#supportStickerToggle','#supportStickerPicker','#supportStatus','#supportReply button[type="submit"]'])nodes.set(id,node());
  nodes.get('#supportReply').requestSubmit=()=>context.submitted=true;
  vm.createContext(context);
- vm.runInContext(source.match(/const escapeHtml=.*;/)[0]+source.slice(source.indexOf('function renderSupportText'),source.indexOf('async function startAdminChat')),context);
+ vm.runInContext(source.match(/const escapeHtml=.*;/)[0]+source.slice(source.indexOf('function normalizeSupportSearch'),source.indexOf('const toDatetimeLocal'))+source.slice(source.indexOf('function renderSupportText'),source.indexOf('async function startAdminChat')),context);
  return {context,nodes,sent,dialogs,node};
 }
+test('conversation search ignores accents and searches customer metadata',()=>{
+ const {context:c,nodes,node}=setup(),contact=node(),empty=node();contact.dataset={search:'João joao@example.com pagamento aprovado'};empty.hidden=true;
+ nodes.set('#supportSearchEmpty',empty);c.$$=selector=>selector==='.support-contact'?[contact]:[];
+ c.filterSupportContacts('JOAO');assert.equal(contact.hidden,false);assert.equal(empty.hidden,true);
+ c.filterSupportContacts('cancelado');assert.equal(contact.hidden,true);assert.equal(empty.hidden,false);
+ assert.match(source,/item\.customer_email,item\.last_message/);
+});
 test('sent and received messages retain lines and clickable links',()=>{
  const {context:c}=setup();for(const sender of ['admin','customer']){const html=c.renderSupportMessage({sender,body:'Oi, tudo bem\nComo voce esta?\nTudo ok? https://example.com?a=1&b=2'});assert.match(html,/bem\nComo/);assert.match(html,/href="https:\/\/example.com\?a=1&amp;b=2"/);}
  assert.match(c.renderSupportText('WWW.example.com.'),/href="https:\/\/WWW.example.com"/);
