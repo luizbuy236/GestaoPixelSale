@@ -19,6 +19,14 @@ test('automatic notice is delivered as a regular chat message',()=>{
  assert.match(migration,/perform public\.chat_deliver_active_notice\(p_conversation_id\)/);
  assert.match(migration,/⚠️ Aviso de atendimento/);
 });
+test('outside-hours automation uses recurring São Paulo business hours',()=>{
+ const migration=fs.readFileSync('supabase/migrations/20261026000000_support_business_hours.sql','utf8');
+ assert.match(source,/name="business_days"/);
+ assert.match(source,/p_timezone:'America\/Sao_Paulo'/);
+ assert.match(migration,/chat_notice_is_outside/);
+ assert.match(migration,/delivery_key/);
+ assert.match(migration,/⚠️ Atendimento indisponível/);
+});
 function setup(){
  const nodes=new Map(),sent=[],dialogs=[];
  const node=()=>({value:'',innerHTML:'',scrollHeight:500,scrollTop:0,clientHeight:100,children:[],querySelectorAll:()=>[],append(...items){this.children.push(...items)},addEventListener(name,fn){this[name]=fn},showModal(){this.open=true},close(){this.open=false;this.closeEvent?.()},remove(){this.removed=true}});
