@@ -27,6 +27,11 @@ test('outside-hours automation uses recurring São Paulo business hours',()=>{
  assert.match(migration,/delivery_key/);
  assert.match(migration,/⚠️ Atendimento indisponível/);
 });
+test('outside-hours settings persist the selected business days',()=>{
+ const migration=fs.readFileSync('supabase/migrations/20261031000000_fix_support_notice_save.sql','utf8');
+ assert.match(migration,/business_days,[\s\S]*?opens_at,[\s\S]*?closes_at/);
+ assert.match(migration,/v_message,[\s\S]*?v_days,[\s\S]*?coalesce\(p_opens_at,'09:00'\)/);
+});
 function setup(){
  const nodes=new Map(),sent=[],dialogs=[];
  const node=()=>({value:'',innerHTML:'',scrollHeight:500,scrollTop:0,clientHeight:100,children:[],querySelectorAll:()=>[],append(...items){this.children.push(...items)},addEventListener(name,fn){this[name]=fn},showModal(){this.open=true},close(){this.open=false;this.closeEvent?.()},remove(){this.removed=true}});
